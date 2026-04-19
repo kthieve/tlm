@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Install tlm via pipx, or fall back to a user venv under ~/.local/share/tlm-venv.
 # Usage: curl -fsSL URL/install.sh | bash -s -- [VERSION]
-# Prefer downloading the script and: bash install.sh 0.2.0b1
+# Prefer downloading the script and: bash install.sh 0.2.0b2
 # (Do not pipe curl to sh unchecked; verify SHA256 from the release page when possible.)
 set -euo pipefail
 
-VERSION="${1:-0.2.0b1}"
+VERSION="${1:-0.2.0b2}"
 BIN_DIR="${HOME}/.local/bin"
 VENV_DIR="${HOME}/.local/share/tlm-venv"
 

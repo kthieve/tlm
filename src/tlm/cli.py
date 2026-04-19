@@ -95,6 +95,7 @@ def parse_ask_tokens(tokens: list[str]) -> tuple[dict, str]:
         "last": False,
         "budget": 8000,
         "tools": True,
+        "web": True,
         "clear_context": False,
         "keyword": None,
     }
@@ -132,6 +133,10 @@ def parse_ask_tokens(tokens: list[str]) -> tuple[dict, str]:
             opts["tools"] = False
             i += 1
             continue
+        if t == "--no-web":
+            opts["web"] = False
+            i += 1
+            continue
         break
     rest = " ".join(tokens[i:]).strip()
     return opts, rest
@@ -155,6 +160,7 @@ def cmd_ask(
     last: bool,
     budget: int,
     tools: bool = True,
+    web: bool = True,
     clear_context: bool = False,
     new_keyword: str | None = None,
 ) -> int:
@@ -163,7 +169,9 @@ def cmd_ask(
     if not text.strip():
         print("error: empty question", file=sys.stderr)
         return 2
-    settings = load_settings()
+    from tlm.setup_wizard import maybe_first_run_wizard
+
+    settings = maybe_first_run_wizard()
     try:
         prov = get_provider(provider, settings=settings)
     except ValueError as e:
@@ -217,6 +225,7 @@ def cmd_ask(
         sess,
         text,
         tools=tools,
+        web=web,
         settings=settings,
         clear_context=clear_context,
     )
@@ -405,9 +414,10 @@ def cmd_usage(ns: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_init() -> int:
+def cmd_init(ns: argparse.Namespace) -> int:
     """Ensure XDG dirs exist; write default config.toml if missing."""
     from tlm.config import data_dir, sessions_dir, state_dir
+    from tlm.setup_wizard import run_setup_wizard
 
     config_dir()
     data_dir()
@@ -431,6 +441,37 @@ def cmd_init() -> int:
     note = init_gui_note()
     if note:
         print(note, flush=True)
+
+    no_wiz = bool(getattr(ns, "no_wizard", False))
+    want_wiz = bool(getattr(ns, "wizard", False))
+    if no_wiz:
+        return 0
+
+    def _run_wizard() -> int:
+        s = load_settings()
+        _out, code = run_setup_wizard(s)
+        if code == 2:
+            return 2
+        return 0 if code == 0 else 1
+
+    if want_wiz:
+        if not sys.stdin.isatty():
+            print("error: --wizard requires an interactive terminal (TTY).", file=sys.stderr)
+            return 2
+        return _run_wizard()
+
+    if not sys.stdin.isatty():
+        return 0
+
+    if created:
+        return _run_wizard()
+
+    try:
+        c = input("Run setup wizard now? [y/N]: ").strip().lower()
+    except EOFError:
+        return 0
+    if c in ("y", "yes"):
+        return _run_wizard()
     return 0
 
 
@@ -549,7 +590,9 @@ def cmd_write_ns(ns: argparse.Namespace) -> int:
     if not text.strip():
         print("error: empty write request", file=sys.stderr)
         return 2
-    settings = load_settings()
+    from tlm.setup_wizard import maybe_first_run_wizard
+
+    settings = maybe_first_run_wizard()
     try:
         prov = get_provider(ns.provider, settings=settings)
     except ValueError as e:
@@ -574,7 +617,9 @@ def cmd_do_ns(ns: argparse.Namespace) -> int:
     if not text.strip():
         print("error: empty do request", file=sys.stderr)
         return 2
-    settings = load_settings()
+    from tlm.setup_wizard import maybe_first_run_wizard
+
+    settings = maybe_first_run_wizard()
     try:
         prov = get_provider(ns.provider, settings=settings)
     except ValueError as e:
@@ -616,9 +661,21 @@ def build_parser() -> argparse.ArgumentParser:
         _handler=lambda _: run_gui_safe()
     )
 
-    sub.add_parser("init", help="Create XDG dirs and default config.toml if missing.").set_defaults(
-        _handler=lambda _: cmd_init()
+    p_init = sub.add_parser(
+        "init",
+        help="Create XDG dirs and default config.toml if missing; optional first-run setup wizard.",
     )
+    p_init.add_argument(
+        "--wizard",
+        action="store_true",
+        help="Run the interactive setup wizard after preparing directories.",
+    )
+    p_init.add_argument(
+        "--no-wizard",
+        action="store_true",
+        help="Do not run the setup wizard (also skips the optional prompt when config already exists).",
+    )
+    p_init.set_defaults(_handler=cmd_init)
 
     p_cfg = sub.add_parser(
         "config",
@@ -657,6 +714,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable model-proposed shell commands (```tlm-exec``` tool loop).",
     )
+    p_q.add_argument(
+        "--no-web",
+        action="store_true",
+        help="Disable model-proposed web fetches (```tlm-web```; Lightpanda).",
+    )
     p_q.add_argument("text", nargs="*", help="Question text")
     p_q.set_defaults(
         _handler=lambda a: cmd_ask(
@@ -667,6 +729,7 @@ def build_parser() -> argparse.ArgumentParser:
             last=a.last,
             budget=a.budget,
             tools=not a.no_tools,
+            web=not a.no_web,
             clear_context=bool(a.clear_context),
             new_keyword=a.ask_keyword,
         )
@@ -810,6 +873,7 @@ def main(argv: list[str] | None = None) -> int:
             last=False,
             budget=8000,
             tools=True,
+            web=True,
             clear_context=False,
             new_keyword=None,
         )
@@ -824,6 +888,7 @@ def main(argv: list[str] | None = None) -> int:
             last=opts["last"],
             budget=int(opts["budget"]),
             tools=opts.get("tools", True),
+            web=opts.get("web", True),
             clear_context=bool(opts.get("clear_context", False)),
             new_keyword=opts.get("keyword"),
         )

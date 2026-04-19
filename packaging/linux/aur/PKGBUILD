@@ -1,6 +1,6 @@
 # Maintainer: replace with your AUR account
 pkgname=tlm
-pkgver=0.2.0b1
+pkgver=0.2.0b2
 pkgrel=1
 pkgdesc="Terminal LLM helper (Linux CLI)"
 arch=('any')

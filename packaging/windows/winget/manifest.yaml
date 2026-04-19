@@ -1,6 +1,6 @@
 # Placeholder — Windows packaging in 0.3.0
 PackageIdentifier: Owner.Tlm
-PackageVersion: 0.2.0b1
+PackageVersion: 0.2.0b2
 PackageName: tlm
 PackageLocale: en-US
 Publisher: Owner
@@ -9,5 +9,5 @@ ShortDescription: Terminal LLM helper
 Installers:
   - Architecture: x64
     InstallerType: portable
-    InstallerUrl: https://github.com/OWNER/tlm/releases/download/v0.2.0b1/tlm.exe
+    InstallerUrl: https://github.com/OWNER/tlm/releases/download/v0.2.0b2/tlm.exe
     InstallerSha256: REPLACE

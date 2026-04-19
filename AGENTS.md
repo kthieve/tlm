@@ -17,7 +17,7 @@
 ## Commands
 
 - Editable install: `pip install -e .` from repo root (use project `.venv`). Dev sandbox: `python sandbox.py` (see `sandbox/README.md`) — `env`, `run`, `shell`, `refresh` (keeps `[keys]` unless `--wipe-keys`).
-- `tlm` (no args) or `tlm help` prints help; natural ask: `tlm which version of ubuntu and what cpu am i using` (same as `tlm ask …`). Replies use Rich markdown; the model may propose read-only shell commands in fenced `tlm-exec` JSON blocks — you approve each run; `tlm ask --no-tools` disables that loop.
+- `tlm` (no args) or `tlm help` prints help; natural ask: `tlm which version of ubuntu and what cpu am i using` (same as `tlm ask …`). Replies use Rich markdown; the model may propose read-only shell commands in fenced `tlm-exec` JSON blocks — you approve each run; `tlm ask --no-tools` disables that loop. With `web_enabled` and the [Lightpanda](https://github.com/lightpanda-io/browser) binary, ask mode can use fenced `tlm-web` blocks (fetch URL or simple DDG search); `tlm ask --no-web` disables that loop.
 - `tlm ? your question` or `tlm ask your question`
 - `tlm init` — create XDG dirs + default `config.toml` if missing
 - `tlm config` — terminal settings UI; `tlm config gui` or `tlm gui` for Tk
@@ -28,5 +28,8 @@
 ## Docs
 
 - Form / scope: `Describe_Here.md`
+- Sessions & memory: `docs/sessions-and-memory.md`
+- Install options: `docs/install.md`
+- Doc index: `docs/documentation.md`
 - File map: `CODE_INDEX.md`
 - Backlog: `AGENT_TODO.md`, phases: `AGENT_PLAN.md`

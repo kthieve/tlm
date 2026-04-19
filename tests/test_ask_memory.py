@@ -10,8 +10,9 @@ from tlm.settings import UserSettings
 
 def test_split_reply_tools_mem_block() -> None:
     text = 'Answer.\n```tlm-mem\n{"op": "search", "q": "foo"}\n```\n'
-    v, argvs, mems = split_reply_tools(text)
+    v, argvs, mems, webs = split_reply_tools(text)
     assert argvs == []
+    assert webs == []
     assert len(mems) == 1
     assert mems[0].get("op") == "search"
     assert "Answer" in v
@@ -37,6 +38,7 @@ def test_ready_memory_in_system_prompt(tmp_path, monkeypatch) -> None:
     sys_p = _build_system_prompt(
         tools=False,
         memory_enabled=st.memory_enabled,
+        web_prompt=False,
         clear_context=False,
         ready_items=items,
         ready_budget=st.memory_ready_budget_chars,
@@ -47,6 +49,7 @@ def test_ready_memory_in_system_prompt(tmp_path, monkeypatch) -> None:
     sys_clear = _build_system_prompt(
         tools=False,
         memory_enabled=True,
+        web_prompt=False,
         clear_context=True,
         ready_items=items,
         ready_budget=800,

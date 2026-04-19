@@ -1,8 +1,8 @@
 #Requires -Version 5.1
 # Experimental Windows installer placeholder for tlm 0.2.x.
-# Prefer: py -3.11 -m pip install --user tlm==0.2.0b1
+# Prefer: py -3.11 -m pip install --user tlm==0.2.0b2
 param(
-    [string]$Version = "0.2.0b1",
+    [string]$Version = "0.2.0b2",
     [switch]$Experimental
 )
 if (-not $Experimental) {

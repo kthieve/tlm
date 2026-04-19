@@ -37,6 +37,14 @@ class UserSettings:
     memory_ready_budget_chars: int = 800
     memory_auto_harvest_threshold_messages: int = 30
     memory_harvest_on_switch: bool = True
+    # Lightpanda-backed ask web tools (see tlm.web.lightpanda); off until user installs binary.
+    web_enabled: bool = False
+    lightpanda_path: str | None = None
+    web_dump: str = "markdown"  # "markdown" | "html"
+    web_obey_robots: bool = True
+    web_max_output_chars: int = 48_000
+    web_disable_lightpanda_telemetry: bool = True
+    web_allow_http: bool = False
 
 
 def _toml_escape_str(s: str) -> str:
@@ -57,6 +65,16 @@ def save_settings(s: UserSettings) -> None:
     lines.append(f"memory_ready_budget_chars = {int(s.memory_ready_budget_chars)}")
     lines.append(f"memory_auto_harvest_threshold_messages = {int(s.memory_auto_harvest_threshold_messages)}")
     lines.append(f"memory_harvest_on_switch = {str(bool(s.memory_harvest_on_switch)).lower()}")
+    lines.append(f"web_enabled = {str(bool(s.web_enabled)).lower()}")
+    if s.lightpanda_path is not None:
+        lines.append(f"lightpanda_path = {_toml_escape_str(s.lightpanda_path)}")
+    lines.append(f"web_dump = {_toml_escape_str(s.web_dump)}")
+    lines.append(f"web_obey_robots = {str(bool(s.web_obey_robots)).lower()}")
+    lines.append(f"web_max_output_chars = {int(s.web_max_output_chars)}")
+    lines.append(
+        f"web_disable_lightpanda_telemetry = {str(bool(s.web_disable_lightpanda_telemetry)).lower()}"
+    )
+    lines.append(f"web_allow_http = {str(bool(s.web_allow_http)).lower()}")
     if s.models:
         lines.append("")
         lines.append("[models]")
@@ -106,6 +124,13 @@ def load_settings() -> UserSettings:
         memory_ready_budget_chars=int(data.get("memory_ready_budget_chars", 800)),
         memory_auto_harvest_threshold_messages=int(data.get("memory_auto_harvest_threshold_messages", 30)),
         memory_harvest_on_switch=_bool("memory_harvest_on_switch", True),
+        web_enabled=_bool("web_enabled", False),
+        lightpanda_path=data.get("lightpanda_path") if isinstance(data.get("lightpanda_path"), str) else None,
+        web_dump=str(data.get("web_dump", "markdown")),
+        web_obey_robots=_bool("web_obey_robots", True),
+        web_max_output_chars=int(data.get("web_max_output_chars", 48_000)),
+        web_disable_lightpanda_telemetry=_bool("web_disable_lightpanda_telemetry", True),
+        web_allow_http=_bool("web_allow_http", False),
     )
 
 

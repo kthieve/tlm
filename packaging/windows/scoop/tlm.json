@@ -1,8 +1,8 @@
 {
-  "version": "0.2.0b1",
+  "version": "0.2.0b2",
   "description": "Terminal LLM helper (placeholder)",
   "homepage": "https://github.com/OWNER/tlm",
   "license": "MIT",
-  "url": "https://github.com/OWNER/tlm/releases/download/v0.2.0b1/tlm-0.2.0b1-win.zip",
+  "url": "https://github.com/OWNER/tlm/releases/download/v0.2.0b2/tlm-0.2.0b2-win.zip",
   "hash": "REPLACE_SHA256"
 }

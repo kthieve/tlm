@@ -2,7 +2,8 @@
 
 | Path | Role |
 |------|------|
-| `src/tlm/ask_tools.py` | Ask loop: `tlm-exec`, `tlm-mem`, ready-memory system prompt |
+| `src/tlm/ask_tools.py` | Ask loop: `tlm-exec`, `tlm-mem`, `tlm-web`, ready-memory system prompt |
+| `src/tlm/web/lightpanda.py` | Lightpanda `fetch` argv, URL validation, DDG search URL |
 | `src/tlm/cli.py` | argparse; `tlm ?`; init/config; natural-language ask; ask/write/do/gui/… |
 | `src/tlm/tui_config.py` | `tlm config` interactive terminal editor |
 | `src/tlm/config.py` | XDG paths, env keys, base URL / model env helpers |
@@ -36,6 +37,9 @@
 | `packaging/macos/homebrew/`, `packaging/windows/*` | Placeholders for 0.3.0 |
 | `src/tlm/gui/app.py` | Tk: Keys, Sessions, Memory, Usage, Logs, Permissions |
 | `docs/tlm.1` | Man page stub |
+| `docs/install.md` | Install paths (PyPI, script, venv, extras) |
+| `docs/sessions-and-memory.md` | Sessions, memory tiers, harvest |
+| `docs/documentation.md` | Index of repo docs |
 | `sandbox.py` | Dev sandbox CLI: `env`, `init`, `refresh` (keeps API keys unless `--wipe-keys`), `run`, `shell` |
 | `sandbox/README.md` | How to use the sandbox |
 | `tests/` | pytest + ruff in CI |

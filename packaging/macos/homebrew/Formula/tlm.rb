@@ -2,7 +2,7 @@
 class Tlm < Formula
   desc "Terminal LLM helper"
   homepage "https://github.com/OWNER/tlm"
-  url "https://github.com/OWNER/tlm/archive/refs/tags/v0.2.0b1.tar.gz"
+  url "https://github.com/OWNER/tlm/archive/refs/tags/v0.2.0b2.tar.gz"
   sha256 "REPLACE"
   license "MIT"
   depends_on "python@3.11"

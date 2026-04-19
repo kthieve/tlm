@@ -3,163 +3,135 @@
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
 
-**Terminal LLM helper for Linux** — ask questions in natural language, chat with **sessions**, use optional **read-only shell diagnostics** (you approve each command), and run **write** / **do** modes behind previews and confirmation. Works with OpenAI-compatible APIs and a small **Tk** (or optional **FLTK**) settings UI.
+**tlm** is a **terminal-first LLM assistant** for Linux: ask questions in plain language, keep **sessions**, optionally let the model suggest **read-only shell checks** and **web fetches** (you approve each step), and use **write** / **do** modes when you want files or commands executed with previews. It talks to **OpenAI-compatible** HTTP APIs and includes a small **Tk** or **FLTK** settings window.
 
 | | |
 |:---|:---|
-| **Version** | Declared in [`pyproject.toml`](pyproject.toml) (`[project].version`). Runtime: `tlm --version`. |
-| **Runtime deps** | Pinned in [`requirements.txt`](requirements.txt) (kept aligned with `pyproject.toml`). |
-| **Scope & features** | [Describe_Here.md](Describe_Here.md) — product form, core features, security notes. |
-| **Command-oriented help** | [AGENTS.md](AGENTS.md) — quick command reference and paths. |
-| **Man page** | [docs/tlm.1](docs/tlm.1) — `troff` manual (stub; mirrors CLI behavior). |
+| **Install (all options)** | [docs/install.md](docs/install.md) |
+| **Sessions & memory** | [docs/sessions-and-memory.md](docs/sessions-and-memory.md) |
+| **Command & path reference** | [AGENTS.md](AGENTS.md) |
+| **Doc index** | [docs/documentation.md](docs/documentation.md) |
+| **Scope & security** | [Describe_Here.md](Describe_Here.md) |
+| **Source map** | [CODE_INDEX.md](CODE_INDEX.md) |
 
 ---
 
-## Features
+## What it does
 
-- **Ask** — `tlm`, `tlm ask …`, or `tlm ? …`; continues the last session by default; Rich markdown replies; optional `tlm-exec` tool loop (`tlm ask --no-tools` to disable).
-- **Providers** — OpenAI-compatible HTTP client: OpenAI, DeepSeek, Chutes, OpenRouter, nano-gpt, plus offline `stub` (see `tlm providers`).
-- **Sessions** — JSON sessions under XDG data; `tlm sessions` (TUI or list/show/delete/rename/resume), `tlm new`, memory harvest via `tlm harvest`.
-- **Write mode** — `tlm write …` proposes file changes with preview and confirmation.
-- **Do mode** — `tlm do …` runs planned argv lists with confirmation (no `shell=True` for untrusted input).
-- **Safety** — Denylist / profiles / freelist (`permissions.toml`) / optional `bwrap`/`firejail` for `tlm do` / root guard (see `tlm/safety/`).
-- **Telemetry** — JSONL request log; `tlm usage` for token/cost summaries.
-- **GUI** — `tlm gui` / `tlm config gui` (`TLM_GUI=tk|fltk|auto`).
+| Mode | What you get |
+|:-----|:-------------|
+| **Ask** | Chat with the model; answers render as **Rich markdown**. Same as typing a natural question after `tlm` with no subcommand. |
+| **Tools (optional)** | The model may emit fenced blocks: **`tlm-exec`** (argv JSON — local diagnostics), **`tlm-mem`** (search your saved memory), **`tlm-web`** (fetch a URL or a simple DuckDuckGo search via [Lightpanda](https://github.com/lightpanda-io/browser)). Nothing runs until you confirm. |
+| **Write** | Proposed file changes with preview and confirmation. |
+| **Do** | Planned **`argv` lists** (no shell injection by default), preview, then `subprocess` with timeouts and safety checks. |
+| **GUI** | `tlm gui` / `tlm config gui` — keys, sessions, usage, logs, permissions. Set `TLM_GUI` to `tk`, `fltk`, or `auto`. |
+
+---
+
+## Features at a glance
+
+- **Sessions** — JSON chats under XDG data; `tlm sessions` (TUI), `tlm new`, resume by keyword or id; optional **harvest** into long-term memory.
+- **Providers** — OpenAI-compatible: OpenAI, DeepSeek, Chutes, OpenRouter, nano-gpt, plus offline **`stub`** (`tlm providers`).
+- **Safety** — Denylist and profiles; **`permissions.toml`** freelist and optional **`bwrap` / `firejail`** for `tlm do`; root guard; `tlm paths` / `allow` / `unallow`.
+- **Telemetry** — Request log (JSONL); `tlm usage` for rough token/cost summaries.
 - **Shell completion** — `tlm completion bash|zsh|fish`.
-
-More detail: [Describe_Here.md](Describe_Here.md) · Code map: [CODE_INDEX.md](CODE_INDEX.md)
-
----
-
-## Install
-
-**From PyPI (when published)** — isolated CLI:
-
-```bash
-pipx install "tlm==0.2.0b1"
-# or
-pip install --user "tlm==0.2.0b1"
-```
-
-**From GitHub** — use the installer script (prefer downloading it, verify the SHA256 from the release, then run `bash install.sh 0.2.0b1`). Avoid unchecked `curl … | bash` pipelines.
-
-```bash
-# After verifying the script checksum from the release page:
-bash scripts/install.sh 0.2.0b1
-```
-
-**From a git clone** (development):
-
-```bash
-cd /path/to/tlm
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -e .
-```
-
-**Optional extras** (see [`pyproject.toml`](pyproject.toml) `[project.optional-dependencies]`):
-
-| Extra | Purpose |
-|-------|---------|
-| `usage` | Better token counting (`tiktoken`) |
-| `gui-fltk` | FLTK window UI (system FLTK / `fltk-config`) |
-| `openai` | Official OpenAI client if needed |
-| `secure` | Keyring helpers (`tlm config migrate-keys`) |
-| `dev` | `pytest`, `ruff`, `mypy`, `pip-audit` |
-
-```bash
-pip install -e ".[usage,dev]"
-```
-
-Release artifacts: GitHub Releases may include wheels, sdist, `tlm.pyz` zipapp, and checksums (see `.github/workflows/release.yml`).
-
-Window UI: `TLM_GUI=tk` (default when Tk is available), `TLM_GUI=fltk` after `[gui-fltk]`, or `TLM_GUI=auto`.
+- **Optional keyring** — `tlm config migrate-keys` with the `[secure]` extra ([install.md](docs/install.md)).
 
 ---
 
-## Configuration
+## Quick start
 
-Set a provider and API key (examples):
+1. **Python 3.11+** and an API key for your provider.
 
-```bash
-export TLM_PROVIDER=openrouter   # or openai, deepseek, chutes, nano-gpt, stub
-export TLM_API_KEY=sk-...
-# e.g. OpenRouter-specific: export TLM_OPENROUTER_API_KEY=...
-```
+2. **Install** (pick one — full detail in [docs/install.md](docs/install.md)):
 
-Initialize XDG dirs and default config:
+   ```bash
+   pipx install "tlm==0.2.0b2"
+   ```
 
-```bash
-tlm init
-```
+   Or from a clone: `python3 -m venv .venv && source .venv/bin/activate && pip install -e .`
 
-Persistent settings: `$XDG_CONFIG_HOME/tlm/config.toml` — use `tlm config` or the GUI. **Permissions / freelist** for `tlm do` sandboxing: `$XDG_CONFIG_HOME/tlm/permissions.toml` (also editable in **GUI → Permissions**; CLI: `tlm paths`, `tlm allow`, `tlm unallow`). Sessions live in `$XDG_DATA_HOME/tlm/sessions/`; **memory** (ready + long-term) in `$XDG_DATA_HOME/tlm/memory/`. Request logs: `$XDG_STATE_HOME/tlm/requests.jsonl` (see `tlm init` output).
+3. **Configure and run:**
 
-### Sessions & memory
+   ```bash
+   export TLM_PROVIDER=openrouter    # or openai, deepseek, chutes, nano-gpt, stub
+   export TLM_API_KEY=sk-...
+   tlm init                             # creates XDG dirs + default config if needed
+   tlm what is 2+2                      # natural ask; continues last session by default
+   ```
 
-- **Last session** — Natural-language asks keep using the same session until `tlm new` or `tlm sessions resume SPEC` (keyword or id).
-- **Keywords** — One-word names per session; the first ask after no prior session picks a keyword via the model.
-- **Ready memory** — Short facts auto-injected into the ask system prompt; skip for one turn with `tlm ask --clear-context` (`--fresh`). Edit in **`tlm gui` → Memory** or `tlm config` → `m`.
-- **Long-term memory** — Searchable JSONL store; in chat the model can emit a fenced **`tlm-mem`** block with JSON like `{"op": "search", "q": "short query"}`.
-
-- **Harvest** — `tlm harvest` (or the sessions TUI / GUI) proposes tiny summaries; lines matching secret patterns are dropped. Use `--dry-run` to preview.
+   You can put provider and model in **`$XDG_CONFIG_HOME/tlm/config.toml`** instead of env vars (`tlm config` for the terminal editor).
 
 ---
 
-## Command cheat sheet
+## Installation (summary)
 
-| Command | What it does |
-|---------|----------------|
-| `tlm` · `tlm help` | Print CLI help |
-| `tlm --version` | Show version ([`pyproject.toml`](pyproject.toml)) |
-| `tlm which cpu am i using` | Natural-language ask (same as `tlm ask …`) |
-| `tlm ask …` · `tlm ? …` | Ask with `--session SPEC`, `--provider`, `--new`/`--keyword`, `--clear-context`, `--budget`, `--no-tools`, … |
-| `tlm write …` | Generate files (preview + confirm) |
-| `tlm do …` | Planned commands (preview + confirm) |
-| `tlm gui` · `tlm config gui` | Settings window |
-| `tlm config` | Terminal settings UI |
-| `tlm providers` | List providers, keys, models |
-| `tlm sessions …` | Session TUI or list/show/delete/rename/resume |
-| `tlm new` | New session (one-word name) |
-| `tlm harvest` | Extract durable facts into long-term memory |
-| `tlm usage` | Summarize usage from JSONL log |
-| `tlm completion bash\|zsh\|fish` | Emit completion script |
-| `tlm paths` | Show freelist paths from `permissions.toml` |
-| `tlm allow` / `tlm unallow` | Add/remove RW or read-only freelist entries |
-| `tlm config migrate-keys` | Move API keys from config to OS keyring (`[secure]`) |
+| Method | Command / note |
+|:-------|:---------------|
+| **PyPI** | `pipx install "tlm==0.2.0b2"` or `pip install --user "tlm==0.2.0b2"` |
+| **GitHub** | Verify script checksum, then `bash scripts/install.sh 0.2.0b2` |
+| **Development** | Clone, venv, `pip install -e .` (extras: see [install.md](docs/install.md)) |
 
-Full narrative: [AGENTS.md](AGENTS.md) · Troff reference: [docs/tlm.1](docs/tlm.1)
+Releases may ship wheels, sdist, and a zipapp; see the repo’s release workflow for artifacts.
 
 ---
 
-## Documentation & help files
+## User guide
 
-| Doc | Role |
-|-----|------|
-| [AGENTS.md](AGENTS.md) | Commands, XDG paths, contributor/agent notes |
-| [Describe_Here.md](Describe_Here.md) | Product scope, core features, platform |
-| [CODE_INDEX.md](CODE_INDEX.md) | Source file map |
-| [docs/tlm.1](docs/tlm.1) | Man page source |
-| [INIT.md](INIT.md) | Original scaffold instructions |
-| [AI_INIT.md](AI_INIT.md) | Brownfield agent workflow |
-| [AGENT_PLAN.md](AGENT_PLAN.md) | Implementation phases |
-| [AGENT_TODO.md](AGENT_TODO.md) | Backlog items |
+### Ask and tools
+
+- **Natural language:** `tlm <your question>` — same as `tlm ask`.
+- **Explicit:** `tlm ask "…"` or `tlm ? "…"` (flags: `--session`, `--provider`, `--new`, `--keyword`, `--budget`, `--clear-context`, `--no-tools`, `--no-web`).
+- **`tlm-exec`** — model suggests a single argv array per block; you approve each command. Disable with **`--no-tools`**.
+- **`tlm-web`** — needs `web_enabled = true` in config and the **Lightpanda** binary on `PATH` (or `lightpanda_path`). Disable with **`--no-web`**. No native Windows binary for Lightpanda — use **WSL** if needed.
+- **`tlm-mem`** — read-only search over stored memory (when memory is enabled).
+
+See [sessions-and-memory.md](docs/sessions-and-memory.md) for ready vs long-term memory and harvest.
+
+### Write and do
+
+- **`tlm write …`** — base directory, overwrite and dry-run flags; always confirm before writes.
+- **`tlm do …`** — JSON plan of argv lists; network and path policies from **`permissions.toml`**; use `tlm paths` / `allow` / `unallow` to adjust the freelist.
+
+### Configuration layout
+
+| Path | Role |
+|:-----|:-----|
+| `$XDG_CONFIG_HOME/tlm/config.toml` | Provider, model, timeouts, memory, **web / Lightpanda** settings |
+| `$XDG_CONFIG_HOME/tlm/permissions.toml` | Freelist, sandbox, network mode, escape grants |
+| `$XDG_DATA_HOME/tlm/` | Sessions, memory |
+| `$XDG_STATE_HOME/tlm/` | Logs (e.g. `requests.jsonl`) |
+
+Run **`tlm init`** to create standard dirs and a starter config.
+
+---
+
+## Common commands
+
+| Command | Purpose |
+|:--------|:--------|
+| `tlm help` | Full CLI help |
+| `tlm ask …` / natural `tlm …` | Chat (default: continue last session) |
+| `tlm write …` / `tlm do …` | Files / commands (with confirmation) |
+| `tlm gui` | Settings UI |
+| `tlm sessions` | Session TUI (also `list`, `resume`, `show`, …) |
+| `tlm new` / `tlm harvest` | New session / promote lines to long-term memory |
+| `tlm providers` / `tlm usage` | Provider list / usage summary |
+| `tlm paths` / `tlm allow` / `tlm unallow` | Inspect or edit freelist paths |
+
+Man page stub: [docs/tlm.1](docs/tlm.1).
 
 ---
 
 ## Development sandbox
 
-Isolated XDG under `sandbox/` so development does not touch your real `~/.config` / `~/.local`:
-
 ```bash
 eval "$(python sandbox.py env)"
 tlm init
 python sandbox.py run tlm ask "hello"
-python sandbox.py refresh    # reinstall; keeps API keys unless --wipe-keys
 ```
 
-Details: [sandbox/README.md](sandbox/README.md)
+Details: [sandbox/README.md](sandbox/README.md).
 
 ---
 

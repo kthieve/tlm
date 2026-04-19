@@ -4,6 +4,10 @@
 
 - [x] Permissions / freelist / sandbox / root guard / GUI Permissions / installer + release workflow / log redaction / `tlm paths|allow|unallow` / `config migrate-keys`.
 
+## 0.2.0b2 (done in tree)
+
+- [x] Ask mode **Lightpanda** web tools: `tlm-web` fenced blocks, `config.toml` web keys, `tlm ask --no-web` / `tlm ? --no-web`.
+
 ## Next (0.3.0+)
 
 - [ ] **`tlm ask --stream`** — CLI flag + `run_interactive_ask` path using `provider.stream`.

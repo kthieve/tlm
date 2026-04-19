@@ -24,6 +24,15 @@ JSON argv blocks; each command is shown for approval before
 Use
 .B \-\-no-tools
 to disable that loop.
+With
+.B web_enabled
+in
+.I config.toml
+and the Lightpanda binary, the model may request web fetches via fenced
+.B tlm-web
+JSON blocks; use
+.B \-\-no-web
+to disable that loop.
 .SH COMMANDS
 .TP
 .B tlm "?" ...
@@ -37,7 +46,8 @@ Ask with flags
 .BR \-\-new ,
 .BR \-\-last ,
 .BR \-\-budget ,
-.BR \-\-no-tools .
+.BR \-\-no-tools ,
+.B \-\-no-web .
 .TP
 .B tlm write
 Generate files under
