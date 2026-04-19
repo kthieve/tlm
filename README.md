@@ -46,12 +46,11 @@
 2. **Install** — **not on PyPI yet**; use a clone or a GitHub `git+https` URL ([docs/install.md](docs/install.md)):
 
    ```bash
-   git clone https://github.com/OWNER/tlm.git && cd tlm
+   git clone https://github.com/kthieve/tlm.git && cd tlm
    python3 -m venv .venv && source .venv/bin/activate
    pip install -e .
    ```
 
-   Replace `OWNER` with the real GitHub user or org.
 
 3. **Configure and run:**
 
