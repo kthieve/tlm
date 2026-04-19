@@ -7,9 +7,54 @@ import shutil
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 from typing import Any
 
 from tlm.config import state_dir
+
+_SENSITIVE_KEYS = frozenset(
+    {
+        "api_key",
+        "authorization",
+        "password",
+        "secret",
+        "token",
+        "access_token",
+        "refresh_token",
+    }
+)
+_REDACT = "[redacted]"
+_SK_RE = re.compile(r"\bsk-[a-zA-Z0-9_-]{10,}\b")
+_BEARER_RE = re.compile(r"(?i)bearer\s+[a-z0-9._-]{8,}")
+
+
+def scrub_record(obj: Any) -> Any:
+    """Redact secrets for JSONL logging."""
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            lk = str(k).lower()
+            if lk in _SENSITIVE_KEYS or lk.endswith("_key") or lk.endswith("_token") or lk.endswith("_secret"):
+                out[k] = _REDACT
+            else:
+                out[k] = scrub_record(v)
+        return out
+    if isinstance(obj, list):
+        return [scrub_record(x) for x in obj]
+    if isinstance(obj, str):
+        s = _SK_RE.sub(_REDACT, obj)
+        s = _BEARER_RE.sub("Bearer " + _REDACT, s)
+        return s
+    return obj
+
+
+def scrub_text_line(line: str) -> str:
+    """Redact secrets in arbitrary text (e.g. log tail)."""
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        return _SK_RE.sub(_REDACT, _BEARER_RE.sub("Bearer " + _REDACT, line))
+    return json.dumps(scrub_record(row), ensure_ascii=False)
 
 MAX_BYTES = 10_000_000
 KEEP_ROTATIONS = 3
@@ -35,7 +80,7 @@ def _rotate_if_needed(path: Path) -> None:
 def log_event(record: dict[str, Any]) -> None:
     path = requests_log_path()
     _rotate_if_needed(path)
-    line = json.dumps(record, ensure_ascii=False) + "\n"
+    line = json.dumps(scrub_record(record), ensure_ascii=False) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(line)

@@ -57,4 +57,4 @@ Standard
 
 ## Additional Notes
 
-- Security backlog: deny dangerous shell patterns, optional allowlist profile, redact secrets in logs, subprocess timeouts, no `shell=True` for untrusted input, atomic file writes in write mode.
+- Security: deny dangerous shell patterns, freelist + `permissions.toml`, optional OS sandbox (`bwrap`/`firejail`), root guard, redact secrets in logs, subprocess timeouts, no `shell=True` for untrusted input, atomic file writes in write mode.

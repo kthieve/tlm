@@ -28,7 +28,14 @@ from tlm.session import (
     trim_session_to_budget,
     write_last_session_id,
 )
-from tlm.settings import UserSettings, config_file_path, config_dir, load_settings, save_settings
+from tlm.settings import (
+    UserSettings,
+    config_dir,
+    config_file_path,
+    load_settings,
+    save_settings,
+    warn_config_permissions,
+)
 from tlm.telemetry import log_event, summarize_usage
 
 # First argv token must be one of these to use structured subcommands (else → natural-language ask).
@@ -48,6 +55,9 @@ KNOWN_SUBCOMMANDS = frozenset(
         "new",
         "harvest",
         "help",
+        "paths",
+        "allow",
+        "unallow",
     }
 )
 
@@ -427,9 +437,100 @@ def cmd_init() -> int:
 def cmd_config_route(ns: argparse.Namespace) -> int:
     if getattr(ns, "config_cmd", None) == "gui":
         return run_gui_safe()
+    if getattr(ns, "config_cmd", None) == "migrate-keys":
+        return cmd_migrate_keys()
     from tlm.tui_config import run_config_tui
 
     return run_config_tui()
+
+
+def cmd_migrate_keys() -> int:
+    try:
+        import keyring  # type: ignore[import-not-found]
+    except ImportError:
+        print("error: install keyring: pip install 'tlm[secure]'", file=sys.stderr)
+        return 2
+    s = load_settings()
+    if not s.api_keys:
+        print("no keys in config.toml to migrate.")
+        return 0
+    for pid, secret in list(s.api_keys.items()):
+        try:
+            keyring.set_password("tlm", pid, secret)
+        except Exception as e:  # noqa: BLE001
+            print(f"error: keyring set {pid}: {e}", file=sys.stderr)
+            return 2
+        del s.api_keys[pid]
+    save_settings(s)
+    print("migrated API keys from config.toml to OS keyring.")
+    return 0
+
+
+def cmd_paths() -> int:
+    from pathlib import Path
+
+    from tlm.safety.permissions import effective_policy, load_permissions_file, permissions_file_path
+    from tlm.safety.permissions import git_toplevel
+
+    cwd = Path.cwd().resolve()
+    ep = effective_policy(cwd)
+    pf = load_permissions_file()
+    print(f"permissions: {permissions_file_path()}")
+    print(f"cwd:\t{ep.cwd}")
+    print(f"project_root:\t{ep.project_root or '(none)'}")
+    print(f"git_toplevel:\t{git_toplevel(cwd) or '(none)'}")
+    print("kind\tsource\tpath")
+    for p in pf.allow_paths:
+        print(f"RW\tglobal\t{p}")
+    for p in pf.read_paths:
+        print(f"RO\tglobal\t{p}")
+    for pr in pf.projects:
+        for p in pr.allow_paths:
+            print(f"RW\tproject:{pr.root}\t{p}")
+        for p in pr.read_paths:
+            print(f"RO\tproject:{pr.root}\t{p}")
+    for p in pf.escape_grants:
+        print(f"RW\tescape_grants\t{p}")
+    print("--- effective (merged) ---")
+    for p in ep.allow_paths:
+        print(f"RW\tmerged\t{p}")
+    for p in ep.read_paths:
+        print(f"RO\tmerged\t{p}")
+    for p in ep.escape_grants:
+        print(f"RW\tescape\t{p}")
+    return 0
+
+
+def cmd_allow_ns(ns: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from tlm.safety.permissions import add_freelist_path
+
+    add_freelist_path(
+        ns.path,
+        read_only=bool(ns.read_only),
+        project=bool(ns.project),
+        project_root=Path(ns.project_root).expanduser() if ns.project_root else None,
+    )
+    print("updated permissions.toml")
+    return 0
+
+
+def cmd_unallow_ns(ns: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from tlm.safety.permissions import remove_freelist_path
+
+    ok = remove_freelist_path(
+        ns.path,
+        project=bool(ns.project),
+        project_root=Path(ns.project_root).expanduser() if ns.project_root else None,
+    )
+    if not ok:
+        print("path not found in allow/read/escape_grants.", file=sys.stderr)
+        return 1
+    print("updated permissions.toml")
+    return 0
 
 
 def cmd_completion(ns: argparse.Namespace) -> int:
@@ -525,6 +626,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cfg_sub = p_cfg.add_subparsers(dest="config_cmd", required=False)
     cfg_sub.add_parser("gui", help="Open window UI (TLM_GUI selects Tk vs FLTK).")
+    cfg_sub.add_parser("migrate-keys", help="Move API keys from config.toml into the OS keyring (needs [secure]).")
     p_cfg.set_defaults(_handler=cmd_config_route)
 
     p_q = sub.add_parser(
@@ -647,6 +749,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_harv.add_argument("--provider", default=None)
     p_harv.set_defaults(_handler=cmd_harvest_ns)
 
+    sub.add_parser("paths", help="Show freelist paths from permissions.toml (global, project, escape grants).").set_defaults(
+        _handler=lambda _: cmd_paths()
+    )
+
+    p_allow = sub.add_parser("allow", help="Add a freelist path (RW or --read-only).")
+    p_allow.add_argument("path", help="Directory path")
+    p_allow.add_argument("--read-only", action="store_true", help="Read-only freelist")
+    p_allow.add_argument("--project", action="store_true", help="Scope to current project root")
+    p_allow.add_argument("--project-root", metavar="DIR", default=None, help="Explicit project root")
+    p_allow.set_defaults(_handler=cmd_allow_ns)
+
+    p_un = sub.add_parser("unallow", help="Remove a path from freelist or escape_grants.")
+    p_un.add_argument("path")
+    p_un.add_argument("--project", action="store_true")
+    p_un.add_argument("--project-root", metavar="DIR", default=None)
+    p_un.set_defaults(_handler=cmd_unallow_ns)
+
     return p
 
 
@@ -670,6 +789,7 @@ def run_gui_safe() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    warn_config_permissions()
     parser = build_parser()
 
     if not argv:

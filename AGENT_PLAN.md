@@ -21,15 +21,17 @@
 
 ---
 
-## Release **0.2.0** (next, dev line)
+## Release **0.2.0b1** (beta, shipped in tree)
 
-Focus: polish CLI parity with the provider layer, fix known gate gaps, improve cost visibility.
+- Installer scripts (`scripts/install.sh`), zipapp (`packaging/build_zipapp.sh`), GitHub `release.yml`, CI `pip-audit` + soft-fail `mypy`.
+- `permissions.toml`, freelist, jail classification, escape consent, root guard, optional `bwrap`/`firejail` for `tlm do`, log redaction, `tlm config migrate-keys`, GUI Permissions tab.
 
-1. **`tlm ask --stream`** — Wire CLI to `OpenAICompatProvider.stream` (and stub). Multi-turn/tool loops need a defined story (e.g. stream only the final model reply, or add `stream_chat` on the provider when API supports it).
-2. **`tlm do` gate + `$EDITOR`** — After `e`, re-run `extract_json_object` / `_parse_commands` on the edited buffer so argv changes apply (`do.py` currently notes this MVP gap).
-3. **Telemetry** — Expand `telemetry/prices.py` for common default models / OpenRouter slugs; align `count_tokens` with model where practical (tiktoken already used in `openai_compat` when installed).
-4. **GUI (optional for 0.2.0)** — Usage over time: simple matplotlib or text sparkline behind an extra (`usage` extra already in `pyproject.toml` pattern).
-5. **Packaging** — deb/AUR only if release checklist demands it; can slip to 0.3.0.
+## Follow-ups (0.3.0+)
+
+1. **`tlm ask --stream`** — Wire CLI to `OpenAICompatProvider.stream` (and stub).
+2. **`tlm do` gate + `$EDITOR`** — Re-parse JSON after `e` so argv edits apply.
+3. **Telemetry** — Expand `telemetry/prices.py`; optional GUI usage graphs.
+4. **Packaging** — Activate Homebrew / Scoop / winget placeholders; optional `.deb` in CI.
 
 ---
 

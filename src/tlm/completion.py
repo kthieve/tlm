@@ -20,7 +20,7 @@ _tlm() {
   COMPREPLY=()
   cur="${COMP_WORDS[COMP_CWORD]}"
   if [ "${COMP_CWORD}" -eq 1 ]; then
-    COMPREPLY=( $(compgen -W "gui ask write do providers sessions usage completion init config new harvest help ?" -- "${cur}") )
+    COMPREPLY=( $(compgen -W "gui ask write do providers sessions usage completion init config new harvest help paths allow unallow ?" -- "${cur}") )
   fi
 }
 complete -F _tlm tlm
@@ -31,7 +31,7 @@ _ZSH = r"""
 #compdef tlm
 _tlm() {
   local -a cmds
-  cmds=(gui ask write do providers sessions usage completion new harvest help '?:help')
+  cmds=(gui ask write do providers sessions usage completion new harvest help paths allow unallow '?:help')
   _arguments '1: :->cmd' '*:: :->args'
   case $state in
     cmd) _describe -t commands command cmds ;;
@@ -55,4 +55,7 @@ complete -c tlm -n "__fish_use_subcommand" -a new -d "New named session"
 complete -c tlm -n "__fish_use_subcommand" -a harvest -d "Harvest facts to memory"
 complete -c tlm -n "__fish_use_subcommand" -a usage -d "Token/cost usage"
 complete -c tlm -n "__fish_use_subcommand" -a completion -d "Print shell completion"
+complete -c tlm -n "__fish_use_subcommand" -a paths -d "Show permissions freelist"
+complete -c tlm -n "__fish_use_subcommand" -a allow -d "Add freelist path"
+complete -c tlm -n "__fish_use_subcommand" -a unallow -d "Remove freelist path"
 """.strip()

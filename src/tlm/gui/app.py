@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import messagebox, scrolledtext, simpledialog, ttk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
+
+import os
 
 from tlm import __version__
 from tlm.harvest import apply_harvest_items, extract_harvest_items
@@ -18,6 +21,8 @@ from tlm.memory import (
     save_ready,
 )
 from tlm.providers.registry import REAL_PROVIDER_IDS, get_provider
+from tlm.safety.permissions import load_permissions_file, permissions_file_path, save_permissions_file
+from tlm.safety.profiles import SafetyProfile, normalize_profile
 from tlm.session import (
     delete_session,
     list_sessions,
@@ -27,6 +32,7 @@ from tlm.session import (
 )
 from tlm.settings import load_settings, save_settings
 from tlm.telemetry import requests_log_path, summarize_usage
+from tlm.telemetry.log import scrub_text_line
 
 # Light shell: header + soft page background (works with clam / default ttk)
 _BG_PAGE = "#e8edf3"
@@ -404,7 +410,7 @@ def run_gui() -> None:
             log_txt.insert(tk.END, "(no requests log yet)")
             return
         lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
-        tail = "\n".join(lines[-400:])
+        tail = "\n".join(scrub_text_line(ln) for ln in lines[-400:])
         log_txt.insert(tk.END, tail)
 
     ttk.Button(tab_log, text="Refresh", command=refresh_logs).grid(row=1, column=0, sticky="e", pady=(8, 0))
@@ -413,12 +419,29 @@ def run_gui() -> None:
     # --- Permissions ---
     tab_perm = ttk.Frame(nb, padding=12)
     nb.add(tab_perm, text="Permissions")
-    lf_perm = ttk.LabelFrame(tab_perm, text="Safety", padding=(12, 10))
-    lf_perm.grid(row=0, column=0, sticky="nw")
+    tab_perm.columnconfigure(0, weight=1)
+    tab_perm.rowconfigure(2, weight=1)
+
+    if os.geteuid() == 0:
+        ttk.Label(
+            tab_perm,
+            text="Warning: GUI running as root — use least privilege when possible.",
+            foreground="#b91c1c",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+    lf_prof = ttk.LabelFrame(tab_perm, text="Safety profile (config.toml)", padding=(12, 10))
+    lf_prof.grid(row=1, column=0, sticky="ew", pady=(0, 8))
     prof_var = tk.StringVar(value=load_settings().safety_profile)
-    ttk.Label(lf_perm, text="Safety profile").grid(row=0, column=0, sticky="w", padx=(0, 12))
-    prof = ttk.Combobox(lf_perm, textvariable=prof_var, values=["strict", "standard", "trusted"], width=22)
+    ttk.Label(lf_prof, text="Profile").grid(row=0, column=0, sticky="w", padx=(0, 12))
+    prof = ttk.Combobox(lf_prof, textvariable=prof_var, values=["strict", "standard", "trusted"], width=22)
     prof.grid(row=0, column=1, sticky="w")
+    rp = normalize_profile(prof_var.get())
+    root_note = (
+        "Root policy: strict/standard block system paths; trusted requires typing the exact phrase in the CLI."
+        if rp != SafetyProfile.trusted
+        else "Root policy: trusted — system paths require the CLI phrase gate."
+    )
+    ttk.Label(lf_prof, text=root_note, wraplength=720).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def save_profile() -> None:
         s = load_settings()
@@ -426,9 +449,133 @@ def run_gui() -> None:
         save_settings(s)
         messagebox.showinfo("tlm", "Saved safety profile.")
 
-    ttk.Button(lf_perm, text="Save", command=save_profile, style="Accent.TButton").grid(
-        row=1, column=1, sticky="w", pady=(12, 0)
+    ttk.Button(lf_prof, text="Save profile", command=save_profile, style="Accent.TButton").grid(
+        row=2, column=1, sticky="e", pady=(12, 0)
     )
+
+    lf_pe = ttk.LabelFrame(tab_perm, text=f"permissions.toml — {permissions_file_path()}", padding=(12, 10))
+    lf_pe.grid(row=2, column=0, sticky="nsew")
+    lf_pe.columnconfigure(0, weight=1)
+    lf_pe.columnconfigure(1, weight=1)
+
+    net_var = tk.StringVar(value="ask")
+    sbox_var = tk.StringVar(value="auto")
+    lb_rw = tk.Listbox(lf_pe, height=8, font=mono)
+    lb_ro = tk.Listbox(lf_pe, height=8, font=mono)
+    lb_eg = tk.Listbox(lf_pe, height=5, font=mono)
+
+    def reload_perm_lists() -> None:
+        pf = load_permissions_file()
+        net_var.set(pf.network_mode)
+        sbox_var.set(pf.sandbox_engine)
+        lb_rw.delete(0, tk.END)
+        for x in pf.allow_paths:
+            lb_rw.insert(tk.END, x)
+        lb_ro.delete(0, tk.END)
+        for x in pf.read_paths:
+            lb_ro.insert(tk.END, x)
+        lb_eg.delete(0, tk.END)
+        for x in pf.escape_grants:
+            lb_eg.insert(tk.END, x)
+
+    ttk.Label(lf_pe, text="Network mode").grid(row=0, column=0, sticky="w")
+    ttk.Combobox(
+        lf_pe, textvariable=net_var, values=["off", "ask", "on"], width=14, state="readonly"
+    ).grid(row=0, column=1, sticky="w")
+    ttk.Label(lf_pe, text="Sandbox engine").grid(row=1, column=0, sticky="w", pady=(4, 0))
+    ttk.Combobox(
+        lf_pe,
+        textvariable=sbox_var,
+        values=["auto", "bwrap", "firejail", "off"],
+        width=14,
+        state="readonly",
+    ).grid(row=1, column=1, sticky="w", pady=(4, 0))
+
+    ttk.Label(lf_pe, text="Free (read & write)").grid(row=2, column=0, sticky="w", pady=(10, 0))
+    ttk.Label(lf_pe, text="Free (read only)").grid(row=2, column=1, sticky="w", pady=(10, 0))
+    lb_rw.grid(row=3, column=0, sticky="nsew", padx=(0, 6))
+    lb_ro.grid(row=3, column=1, sticky="nsew")
+
+    def add_rw() -> None:
+        d = filedialog.askdirectory(parent=root)
+        if not d:
+            return
+        pf = load_permissions_file()
+        r = str(Path(d).resolve())
+        if r not in pf.allow_paths:
+            pf.allow_paths.append(r)
+        save_permissions_file(pf)
+        reload_perm_lists()
+
+    def add_ro() -> None:
+        d = filedialog.askdirectory(parent=root)
+        if not d:
+            return
+        pf = load_permissions_file()
+        r = str(Path(d).resolve())
+        if r not in pf.read_paths:
+            pf.read_paths.append(r)
+        save_permissions_file(pf)
+        reload_perm_lists()
+
+    def del_rw() -> None:
+        sel = lb_rw.curselection()
+        if not sel:
+            return
+        p = lb_rw.get(sel[0])
+        pf = load_permissions_file()
+        pf.allow_paths = [x for x in pf.allow_paths if x != p]
+        save_permissions_file(pf)
+        reload_perm_lists()
+
+    def del_ro() -> None:
+        sel = lb_ro.curselection()
+        if not sel:
+            return
+        p = lb_ro.get(sel[0])
+        pf = load_permissions_file()
+        pf.read_paths = [x for x in pf.read_paths if x != p]
+        save_permissions_file(pf)
+        reload_perm_lists()
+
+    bf_rw = ttk.Frame(lf_pe)
+    bf_rw.grid(row=4, column=0, sticky="ew", pady=(6, 0))
+    ttk.Button(bf_rw, text="Add (browse)", command=add_rw).pack(side=tk.LEFT, padx=(0, 6))
+    ttk.Button(bf_rw, text="Remove", command=del_rw).pack(side=tk.LEFT)
+
+    bf_ro = ttk.Frame(lf_pe)
+    bf_ro.grid(row=4, column=1, sticky="ew", pady=(6, 0))
+    ttk.Button(bf_ro, text="Add (browse)", command=add_ro).pack(side=tk.LEFT, padx=(0, 6))
+    ttk.Button(bf_ro, text="Remove", command=del_ro).pack(side=tk.LEFT)
+
+    ttk.Label(lf_pe, text="Persisted escape grants").grid(row=5, column=0, columnspan=2, sticky="w", pady=(12, 0))
+    lb_eg.grid(row=6, column=0, columnspan=2, sticky="ew")
+
+    def del_eg() -> None:
+        sel = lb_eg.curselection()
+        if not sel:
+            return
+        p = lb_eg.get(sel[0])
+        pf = load_permissions_file()
+        pf.escape_grants = [x for x in pf.escape_grants if x != p]
+        save_permissions_file(pf)
+        reload_perm_lists()
+
+    ttk.Button(lf_pe, text="Remove selected escape grant", command=del_eg).grid(
+        row=7, column=1, sticky="e", pady=(6, 0)
+    )
+
+    def save_perm_file() -> None:
+        pf = load_permissions_file()
+        pf.network_mode = net_var.get().strip() or "ask"
+        pf.sandbox_engine = sbox_var.get().strip() or "auto"
+        save_permissions_file(pf)
+        messagebox.showinfo("tlm", "Saved permissions.toml settings.")
+
+    ttk.Button(lf_pe, text="Save network/sandbox", command=save_perm_file, style="Accent.TButton").grid(
+        row=8, column=1, sticky="e", pady=(12, 0)
+    )
+    reload_perm_lists()
 
     foot = ttk.Frame(outer)
     foot.pack(fill=tk.X, pady=(10, 0))

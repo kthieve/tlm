@@ -22,9 +22,18 @@
 | `src/tlm/providers/registry.py` | `get_provider`, `describe_providers`, `REAL_PROVIDER_IDS` |
 | `src/tlm/modes/write.py` | `tlm write` — JSON files, diff, atomic write |
 | `src/tlm/modes/do.py` | `tlm do` — JSON argv plans, gate, `subprocess.run` |
-| `src/tlm/safety/shell.py` | Denylist + package-manager guard |
-| `src/tlm/safety/profiles.py` | `strict` / `standard` / `trusted`, read-only detection |
+| `src/tlm/safety/shell.py` | Denylist + package-manager guard + network-tool policy |
+| `src/tlm/safety/profiles.py` | `strict` / `standard` / `trusted`, read-only detection, `overlay_effective_policy` |
 | `src/tlm/safety/gate.py` | Interactive confirm + `$EDITOR` |
+| `src/tlm/safety/permissions.py` | `permissions.toml` freelist, per-project overrides |
+| `src/tlm/safety/jail.py` | Path classification (freelist / jail / escape) |
+| `src/tlm/safety/consent.py` | Jail-escape interactive consent |
+| `src/tlm/safety/root_guard.py` | Root / elevation guard |
+| `src/tlm/safety/sandbox.py` | Optional `bwrap` / `firejail` argv wrapper |
+| `scripts/install.sh` | pipx / venv installer |
+| `packaging/build_zipapp.sh` | Shiv zipapp → `dist/tlm.pyz` |
+| `packaging/linux/deb/`, `packaging/linux/aur/` | Linux packaging scaffolding |
+| `packaging/macos/homebrew/`, `packaging/windows/*` | Placeholders for 0.3.0 |
 | `src/tlm/gui/app.py` | Tk: Keys, Sessions, Memory, Usage, Logs, Permissions |
 | `docs/tlm.1` | Man page stub |
 | `sandbox.py` | Dev sandbox CLI: `env`, `init`, `refresh` (keeps API keys unless `--wipe-keys`), `run`, `shell` |

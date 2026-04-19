@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from enum import Enum
 import shlex
+
+from tlm.safety.permissions import EffectivePolicy
 
 
 class SafetyProfile(str, Enum):
@@ -75,3 +78,15 @@ def all_readonly(argvs: list[list[str]]) -> bool:
 
 def allow_do_auto_yes(profile: SafetyProfile, argvs: list[list[str]]) -> bool:
     return profile == SafetyProfile.trusted and all_readonly(argvs)
+
+
+def overlay_effective_policy(ep: EffectivePolicy, profile: str | SafetyProfile) -> EffectivePolicy:
+    """Apply safety_profile on top of permissions.toml (stricter profile tightens network/sandbox)."""
+    p = profile if isinstance(profile, SafetyProfile) else normalize_profile(profile)
+    if p == SafetyProfile.strict:
+        return replace(ep, network_mode="off", sandbox_engine="auto" if ep.sandbox_engine != "off" else "off")
+    if p == SafetyProfile.standard:
+        return ep
+    if p == SafetyProfile.trusted:
+        return replace(ep, network_mode="on", sandbox_engine="off")
+    return ep

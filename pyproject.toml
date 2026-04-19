@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tlm"
-version = "0.1.0.dev0"
+version = "0.2.0b1"
 description = "Linux terminal CLI for LLM Q&A, guarded code write/run, and Tk/FLTK config UI."
 requires-python = ">=3.11"
 dependencies = [
@@ -17,7 +17,8 @@ dependencies = [
 openai = ["openai>=1.40"]
 usage = ["tiktoken>=0.7"]
 gui-fltk = ["pyfltk>=1.4,<2"]
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10"]
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10", "pip-audit>=2.7"]
+secure = ["keyring>=25.0"]
 
 [project.scripts]
 tlm = "tlm.cli:main"
@@ -29,6 +30,12 @@ where = ["src"]
 line-length = 100
 target-version = "py311"
 extend-include = ["sandbox.py"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["tlm"]
+ignore_missing_imports = true
+check_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

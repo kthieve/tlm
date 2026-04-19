@@ -1,0 +1,45 @@
+name: release
+on:
+  push:
+    tags:
+      - "v0.2.*"
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build deps
+        run: |
+          python -m pip install -U pip build shiv cyclonedx-bom
+          pip install -e ".[dev]"
+      - name: Wheel and sdist
+        run: python -m build
+      - name: Zipapp
+        run: bash packaging/build_zipapp.sh
+      - name: SBOM
+        run: |
+          mkdir -p dist
+          cyclonedx-py requirements -r requirements.txt -o dist/sbom-cdx.json \
+            || echo '{"bomFormat":"CycloneDX","specVersion":"1.4"}' > dist/sbom-cdx.json
+      - name: SHA256SUMS
+        run: |
+          cd dist
+          sha256sum *.whl *.tar.gz tlm.pyz 2>/dev/null > SHA256SUMS || true
+          ls -la
+      - name: Upload artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/tlm.pyz
+            dist/sbom-cdx.json
+            dist/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

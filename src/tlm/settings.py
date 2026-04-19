@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 import tomllib
@@ -106,6 +107,22 @@ def load_settings() -> UserSettings:
         memory_auto_harvest_threshold_messages=int(data.get("memory_auto_harvest_threshold_messages", 30)),
         memory_harvest_on_switch=_bool("memory_harvest_on_switch", True),
     )
+
+
+def warn_config_permissions() -> None:
+    """Warn if config.toml is readable by group/other."""
+    p = config_file_path()
+    if not p.is_file():
+        return
+    try:
+        mode = p.stat().st_mode & 0o777
+    except OSError:
+        return
+    if mode > 0o600:
+        print(
+            f"tlm: warning: {p} permissions are {oct(mode)}; recommended chmod 600",
+            file=sys.stderr,
+        )
 
 
 def merged_api_key(provider_id: str, settings: UserSettings | None = None) -> str | None:

@@ -22,7 +22,7 @@
 - **Sessions** — JSON sessions under XDG data; `tlm sessions` (TUI or list/show/delete/rename/resume), `tlm new`, memory harvest via `tlm harvest`.
 - **Write mode** — `tlm write …` proposes file changes with preview and confirmation.
 - **Do mode** — `tlm do …` runs planned argv lists with confirmation (no `shell=True` for untrusted input).
-- **Safety** — Denylist / profiles / interactive gate (see `tlm/safety/`).
+- **Safety** — Denylist / profiles / freelist (`permissions.toml`) / optional `bwrap`/`firejail` for `tlm do` / root guard (see `tlm/safety/`).
 - **Telemetry** — JSONL request log; `tlm usage` for token/cost summaries.
 - **GUI** — `tlm gui` / `tlm config gui` (`TLM_GUI=tk|fltk|auto`).
 - **Shell completion** — `tlm completion bash|zsh|fish`.
@@ -32,6 +32,23 @@ More detail: [Describe_Here.md](Describe_Here.md) · Code map: [CODE_INDEX.md](C
 ---
 
 ## Install
+
+**From PyPI (when published)** — isolated CLI:
+
+```bash
+pipx install "tlm==0.2.0b1"
+# or
+pip install --user "tlm==0.2.0b1"
+```
+
+**From GitHub** — use the installer script (prefer downloading it, verify the SHA256 from the release, then run `bash install.sh 0.2.0b1`). Avoid unchecked `curl … | bash` pipelines.
+
+```bash
+# After verifying the script checksum from the release page:
+bash scripts/install.sh 0.2.0b1
+```
+
+**From a git clone** (development):
 
 ```bash
 cd /path/to/tlm
@@ -48,11 +65,14 @@ pip install -e .
 | `usage` | Better token counting (`tiktoken`) |
 | `gui-fltk` | FLTK window UI (system FLTK / `fltk-config`) |
 | `openai` | Official OpenAI client if needed |
-| `dev` | `pytest`, `ruff`, `mypy` |
+| `secure` | Keyring helpers (`tlm config migrate-keys`) |
+| `dev` | `pytest`, `ruff`, `mypy`, `pip-audit` |
 
 ```bash
 pip install -e ".[usage,dev]"
 ```
+
+Release artifacts: GitHub Releases may include wheels, sdist, `tlm.pyz` zipapp, and checksums (see `.github/workflows/release.yml`).
 
 Window UI: `TLM_GUI=tk` (default when Tk is available), `TLM_GUI=fltk` after `[gui-fltk]`, or `TLM_GUI=auto`.
 
@@ -74,7 +94,7 @@ Initialize XDG dirs and default config:
 tlm init
 ```
 
-Persistent settings: `$XDG_CONFIG_HOME/tlm/config.toml` — use `tlm config` or the GUI. Sessions live in `$XDG_DATA_HOME/tlm/sessions/`; **memory** (ready + long-term) in `$XDG_DATA_HOME/tlm/memory/`. Request logs: `$XDG_STATE_HOME/tlm/requests.jsonl` (see `tlm init` output).
+Persistent settings: `$XDG_CONFIG_HOME/tlm/config.toml` — use `tlm config` or the GUI. **Permissions / freelist** for `tlm do` sandboxing: `$XDG_CONFIG_HOME/tlm/permissions.toml` (also editable in **GUI → Permissions**; CLI: `tlm paths`, `tlm allow`, `tlm unallow`). Sessions live in `$XDG_DATA_HOME/tlm/sessions/`; **memory** (ready + long-term) in `$XDG_DATA_HOME/tlm/memory/`. Request logs: `$XDG_STATE_HOME/tlm/requests.jsonl` (see `tlm init` output).
 
 ### Sessions & memory
 
@@ -105,6 +125,9 @@ Persistent settings: `$XDG_CONFIG_HOME/tlm/config.toml` — use `tlm config` or 
 | `tlm harvest` | Extract durable facts into long-term memory |
 | `tlm usage` | Summarize usage from JSONL log |
 | `tlm completion bash\|zsh\|fish` | Emit completion script |
+| `tlm paths` | Show freelist paths from `permissions.toml` |
+| `tlm allow` / `tlm unallow` | Add/remove RW or read-only freelist entries |
+| `tlm config migrate-keys` | Move API keys from config to OS keyring (`[secure]`) |
 
 Full narrative: [AGENTS.md](AGENTS.md) · Troff reference: [docs/tlm.1](docs/tlm.1)
 

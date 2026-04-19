@@ -74,8 +74,29 @@ Summarize JSONL request logs.
 .TP
 .B tlm completion
 Emit shell completion for bash, zsh, or fish.
+.TP
+.B tlm paths
+Show freelist paths from
+.I permissions.toml
+(global, project, escape grants).
+.TP
+.B tlm allow
+Add a freelist path (RW or
+.BR \-\-read\-only ).
+.TP
+.B tlm unallow
+Remove a path from freelist or escape grants.
+.TP
+.B tlm config migrate-keys
+Move API keys from
+.I config.toml
+to the OS keyring (requires optional
+.B secure
+extra).
 .SH FILES
 .I $XDG_CONFIG_HOME/tlm/config.toml
+.br
+.I $XDG_CONFIG_HOME/tlm/permissions.toml
 .br
 .I $XDG_DATA_HOME/tlm/sessions/
 .br
