@@ -10,3 +10,6 @@ dist/
 build/
 .coverage
 htmlcov/
+# Local-only tlm state when using sandbox/env.sh
+sandbox/.config/
+sandbox/.local/

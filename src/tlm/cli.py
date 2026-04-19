@@ -44,7 +44,6 @@ KNOWN_SUBCOMMANDS = frozenset(
     }
 )
 
-
 def read_stdin_blob(max_chars: int = 256_000) -> str:
     """Append stdin to the prompt when it is a pipe/redirect with data ready (no hang on empty non-tty)."""
     if sys.stdin.isatty():
@@ -246,6 +245,11 @@ def cmd_init() -> int:
         print(f"  created: {p} (default provider openrouter)", flush=True)
     else:
         print(f"  config exists: {p}", flush=True)
+    from tlm.gui.dispatch import init_gui_note
+
+    note = init_gui_note()
+    if note:
+        print(note, flush=True)
     return 0
 
 
@@ -328,7 +332,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = p.add_subparsers(dest="cmd", required=False, metavar="COMMAND")
 
-    sub.add_parser("gui", help="Open Tk configuration UI (same as `tlm config gui`).").set_defaults(
+    sub.add_parser(
+        "gui",
+        help="Open settings UI (Tk or FLTK; env TLM_GUI=tk|fltk|auto; same as `tlm config gui`).",
+    ).set_defaults(
         _handler=lambda _: run_gui_safe()
     )
 
@@ -341,7 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Edit settings in the terminal; `tlm config gui` opens the window UI.",
     )
     cfg_sub = p_cfg.add_subparsers(dest="config_cmd", required=False)
-    cfg_sub.add_parser("gui", help="Open Tk GUI.")
+    cfg_sub.add_parser("gui", help="Open window UI (TLM_GUI selects Tk vs FLTK).")
     p_cfg.set_defaults(_handler=cmd_config_route)
 
     p_q = sub.add_parser("ask", help="Ask the model (equivalent to `tlm ? …`).")
@@ -418,9 +425,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_gui_safe() -> int:
-    from tlm.gui import run_gui
+    from tlm.gui.dispatch import GuiBackendError, dispatch_gui
 
-    run_gui()
+    try:
+        dispatch_gui()
+    except GuiBackendError as e:
+        print(f"error: {e}", file=sys.stderr)
+        if e.hint:
+            print(e.hint, file=sys.stderr, end="")
+        return 1
+    except Exception as e:
+        if type(e).__name__ == "TclError":
+            print(f"error: GUI failed to start ({e}). Is DISPLAY set?", file=sys.stderr)
+            return 1
+        raise
     return 0
 
 

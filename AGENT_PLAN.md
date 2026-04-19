@@ -1,32 +1,39 @@
-# AGENT_PLAN — foundation → MVP
+# AGENT_PLAN — foundation → releases
 
-## Phase 1 — Real LLM calls
+## Phases 1–4 (in tree; pre-1.0 dev)
 
-- Replace `StubProvider` with httpx-based clients per vendor (unified message schema).
-- Env vars: `TLM_PROVIDER`, `TLM_API_KEY` or `TLM_<PROVIDER>_API_KEY`, model overrides.
-- Errors: surface HTTP status and rate limits clearly.
+| Phase | Intent | Status |
+|-------|--------|--------|
+| **1 — Real LLM calls** | `OpenAICompatProvider` (httpx), env/config keys, clear HTTP errors | Done (`src/tlm/providers/openai_compat.py`, `registry.py`) |
+| **2 — Sessions** | JSON sessions, trim, `tlm sessions …`, last-session pointer | Done (`session.py`, `cli.py`) |
+| **3 — Write mode** | JSON plan, diff preview, atomic temp+rename | Done (`modes/write.py`; gate edit disabled by design) |
+| **4 — Do mode** | argv JSON, denylist, gate, `subprocess.run` timeout, no `shell=True` | Done (`modes/do.py`, `safety/shell.py`) |
 
-## Phase 2 — Sessions and context
+## Phase 5 — GUI (partial)
 
-- Thread last N messages + optional system prompt; session list CLI (`tlm sessions`).
-- GUI: load/switch sessions, search history.
+- **Done:** Keys (incl. optional keyring), session list + JSON view, usage summary text, request log tail, safety profile (`src/tlm/gui/app.py`).
+- **Not done:** In-GUI chat, usage graphs, richer log redaction UX.
 
-## Phase 3 — Write mode
+## Security (ongoing)
 
-- Plan: proposed paths, file contents, executable bit — all in preview.
-- Confirm once per batch; write atomically (temp + rename).
+- Deny patterns + profiles: implemented (`safety/`).
+- Stretch: stricter allowlist profile, consistent secret redaction in logs/GUI.
 
-## Phase 4 — Do mode
+---
 
-- After denylist: run with timeout, capture stdout/stderr, optional cwd allowlist.
-- Never `shell=True` for untrusted strings.
+## Release **0.2.0** (next, dev line)
 
-## Phase 5 — GUI
+Focus: polish CLI parity with the provider layer, fix known gate gaps, improve cost visibility.
 
-- API key entry (masked), provider picker, token/cost estimates, matplotlib or canvas graphs for usage over time.
+1. **`tlm ask --stream`** — Wire CLI to `OpenAICompatProvider.stream` (and stub). Multi-turn/tool loops need a defined story (e.g. stream only the final model reply, or add `stream_chat` on the provider when API supports it).
+2. **`tlm do` gate + `$EDITOR`** — After `e`, re-run `extract_json_object` / `_parse_commands` on the edited buffer so argv changes apply (`do.py` currently notes this MVP gap).
+3. **Telemetry** — Expand `telemetry/prices.py` for common default models / OpenRouter slugs; align `count_tokens` with model where practical (tiktoken already used in `openai_compat` when installed).
+4. **GUI (optional for 0.2.0)** — Usage over time: simple matplotlib or text sparkline behind an extra (`usage` extra already in `pyproject.toml` pattern).
+5. **Packaging** — deb/AUR only if release checklist demands it; can slip to 0.3.0.
 
-## Security (cross-cutting)
+---
 
-- Expand deny patterns (`rm -rf /`, privilege escalation, credential exfil).
-- Optional command allowlist profile for paranoid installs.
-- Log redaction for keys in GUI and file logs.
+## Later (post-0.2.0)
+
+- Write-mode optional `$EDITOR` for raw JSON plan (currently `allow_edit=False`).
+- Man page expansion (`docs/tlm.1` is minimal).

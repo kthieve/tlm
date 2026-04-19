@@ -16,7 +16,7 @@
 
 ## Commands
 
-- Editable install: `pip install -e .` from repo root (use project `.venv`).
+- Editable install: `pip install -e .` from repo root (use project `.venv`). Dev sandbox: `python sandbox.py` (see `sandbox/README.md`) — `env`, `run`, `shell`, `refresh` (keeps `[keys]` unless `--wipe-keys`).
 - `tlm` (no args) or `tlm help` prints help; natural ask: `tlm which version of ubuntu and what cpu am i using` (same as `tlm ask …`). Replies use Rich markdown; the model may propose read-only shell commands in fenced `tlm-exec` JSON blocks — you approve each run; `tlm ask --no-tools` disables that loop.
 - `tlm ? your question` or `tlm ask your question`
 - `tlm init` — create XDG dirs + default `config.toml` if missing

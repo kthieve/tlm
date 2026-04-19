@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tlm"
-version = "1.1.0"
-description = "Linux terminal CLI for LLM Q&A, guarded code write/run, and Tk config UI."
+version = "0.1.0.dev0"
+description = "Linux terminal CLI for LLM Q&A, guarded code write/run, and Tk/FLTK config UI."
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27",
@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 openai = ["openai>=1.40"]
 usage = ["tiktoken>=0.7"]
+gui-fltk = ["pyfltk>=1.4,<2"]
 dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10"]
 
 [project.scripts]
@@ -27,7 +28,11 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-include = ["sandbox.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "gui: needs working tkinter (and usually DISPLAY or Xvfb)",
+]

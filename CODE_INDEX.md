@@ -24,6 +24,8 @@
 | `src/tlm/safety/gate.py` | Interactive confirm + `$EDITOR` |
 | `src/tlm/gui/app.py` | Tk: Keys, Sessions, Usage, Logs, Permissions |
 | `docs/tlm.1` | Man page stub |
+| `sandbox.py` | Dev sandbox CLI: `env`, `init`, `refresh` (keeps API keys unless `--wipe-keys`), `run`, `shell` |
+| `sandbox/README.md` | How to use the sandbox |
 | `tests/` | pytest + ruff in CI |
 | `pyproject.toml` | Packaging, extras `usage` / `dev`, pytest `pythonpath` |
 | `requirements.txt` | Runtime pins (mirror `[project].dependencies`) |

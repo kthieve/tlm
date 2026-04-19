@@ -103,9 +103,9 @@ def run_config_tui() -> int:
                     continue
             return 1
         elif choice == "g":
-            from tlm.gui import run_gui
+            from tlm.cli import run_gui_safe
 
-            run_gui()
+            run_gui_safe()
             s = load_settings()  # reload in case GUI changed file
             dirty = False
         else:

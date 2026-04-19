@@ -8,11 +8,11 @@ except ImportError:
     PackageNotFoundError = Exception  # type: ignore[misc,assignment]
 
     def version(_: str) -> str:  # type: ignore[no-redef]
-        return "0.0.0"
+        return "0.1.0.dev0"
 
 
 def package_version() -> str:
     try:
         return version("tlm")
     except PackageNotFoundError:
-        return "0.0.0"
+        return "0.1.0.dev0"
