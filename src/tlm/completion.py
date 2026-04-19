@@ -1,0 +1,56 @@
+"""Shell completion scripts for bash/zsh/fish."""
+
+from __future__ import annotations
+
+
+def emit(shell: str) -> str:
+    s = shell.lower().strip()
+    if s == "bash":
+        return _BASH
+    if s == "zsh":
+        return _ZSH
+    if s == "fish":
+        return _FISH
+    raise ValueError(f"unsupported shell: {shell!r}")
+
+
+_BASH = r"""
+_tlm() {
+  local cur
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  if [ "${COMP_CWORD}" -eq 1 ]; then
+    COMPREPLY=( $(compgen -W "gui ask write do providers sessions usage completion init config ?" -- "${cur}") )
+  fi
+}
+complete -F _tlm tlm
+""".strip()
+
+
+_ZSH = r"""
+#compdef tlm
+_tlm() {
+  local -a cmds
+  cmds=(gui ask write do providers sessions usage completion '?:help')
+  _arguments '1: :->cmd' '*:: :->args'
+  case $state in
+    cmd) _describe -t commands command cmds ;;
+    args) _files ;;
+  esac
+}
+compdef _tlm tlm
+""".strip()
+
+
+_FISH = r"""
+complete -c tlm -n "__fish_use_subcommand" -a init -d "Create dirs and default config"
+complete -c tlm -n "__fish_use_subcommand" -a config -d "TUI settings (config gui for window)"
+complete -c tlm -n "__fish_use_subcommand" -a gui -d "Tk configuration UI"
+complete -c tlm -n "__fish_use_subcommand" -a ask -d "Ask the model"
+complete -c tlm -n "__fish_use_subcommand" -a write -d "Write files (confirm)"
+complete -c tlm -n "__fish_use_subcommand" -a do -d "Run commands (confirm)"
+complete -c tlm -n "__fish_use_subcommand" -a providers -d "List providers"
+complete -c tlm -n "__fish_use_subcommand" -a sessions -d "Manage sessions"
+complete -c tlm -n "__fish_use_subcommand" -a usage -d "Token/cost usage"
+complete -c tlm -n "__fish_use_subcommand" -a completion -d "Print shell completion"
+""".strip()

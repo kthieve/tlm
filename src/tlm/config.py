@@ -29,6 +29,19 @@ def sessions_dir() -> Path:
     return d
 
 
+def xdg_state_home() -> Path:
+    base = os.environ.get("XDG_STATE_HOME")
+    if base:
+        return Path(base).expanduser()
+    return Path.home() / ".local" / "state"
+
+
+def state_dir() -> Path:
+    d = xdg_state_home() / "tlm"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def default_provider() -> str:
     return os.environ.get("TLM_PROVIDER", "openrouter").strip().lower()
 
@@ -37,3 +50,13 @@ def api_key_for(provider: str) -> str | None:
     """Read `TLM_<PROVIDER>_API_KEY` or generic `TLM_API_KEY`."""
     p = provider.upper().replace("-", "_")
     return os.environ.get(f"TLM_{p}_API_KEY") or os.environ.get("TLM_API_KEY")
+
+
+def base_url_env(provider: str) -> str | None:
+    p = provider.upper().replace("-", "_")
+    return os.environ.get(f"TLM_{p}_BASE_URL")
+
+
+def default_model_env() -> str | None:
+    v = os.environ.get("TLM_MODEL")
+    return v.strip() if v else None

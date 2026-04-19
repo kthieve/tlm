@@ -1,0 +1,82 @@
+.TH TLM 1
+.SH NAME
+tlm \- terminal LLM helper for Linux
+.SH SYNOPSIS
+.B tlm
+.RI [ options ]
+.I command
+.RI [ args ...]
+.SH DESCRIPTION
+.B tlm
+asks LLM providers, proposes file writes, and plans shell commands with interactive confirmation.
+.PP
+Run
+.B tlm
+with no arguments to print help. A natural question such as
+.B "tlm which version of ubuntu and what cpu am i using"
+is sent to the model like
+.BR "tlm ask" .
+Replies are rendered with Rich (markdown). The model may request read-only
+diagnostics via fenced
+.B tlm-exec
+JSON argv blocks; each command is shown for approval before
+.BR "subprocess.run" .
+Use
+.B \-\-no-tools
+to disable that loop.
+.SH COMMANDS
+.TP
+.B tlm "?" ...
+Ask the model (same as
+.BR "tlm ask" ).
+.TP
+.B tlm ask
+Ask with flags
+.B \-\-session
+.BR \-\-provider ,
+.BR \-\-new ,
+.BR \-\-last ,
+.BR \-\-budget ,
+.BR \-\-no-tools .
+.TP
+.B tlm write
+Generate files under
+.B \-\-dir
+with preview and confirmation.
+.TP
+.B tlm do
+Plan argv-based commands; confirm before
+.BR subprocess.run .
+.TP
+.B tlm init
+Create XDG config/data/state directories and a default
+.I config.toml
+if none exists.
+.TP
+.B tlm config
+Interactive terminal settings editor.
+.TP
+.B tlm config gui
+Open the Tk configuration UI (same as
+.BR "tlm gui" ).
+.TP
+.B tlm gui
+Open the Tk configuration UI.
+.TP
+.B tlm sessions
+List, show, delete, or rename JSON sessions.
+.TP
+.B tlm providers
+Show provider ids, key presence, and model.
+.TP
+.B tlm usage
+Summarize JSONL request logs.
+.TP
+.B tlm completion
+Emit shell completion for bash, zsh, or fish.
+.SH FILES
+.I $XDG_CONFIG_HOME/tlm/config.toml
+.br
+.I $XDG_DATA_HOME/tlm/sessions/
+.br
+.I $XDG_STATE_HOME/tlm/requests.jsonl
