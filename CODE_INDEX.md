@@ -31,13 +31,13 @@
 | `src/tlm/safety/consent.py` | Jail-escape interactive consent |
 | `src/tlm/safety/root_guard.py` | Root / elevation guard |
 | `src/tlm/safety/sandbox.py` | Optional `bwrap` / `firejail` argv wrapper |
-| `scripts/install.sh` | pipx / venv installer |
+| `scripts/install.sh` | pipx / venv install from `git+https` (`TLM_GITHUB_REPO`) |
 | `packaging/build_zipapp.sh` | Shiv zipapp → `dist/tlm.pyz` |
 | `packaging/linux/deb/`, `packaging/linux/aur/` | Linux packaging scaffolding |
 | `packaging/macos/homebrew/`, `packaging/windows/*` | Placeholders for 0.3.0 |
 | `src/tlm/gui/app.py` | Tk: Keys, Sessions, Memory, Usage, Logs, Permissions |
 | `docs/tlm.1` | Man page stub |
-| `docs/install.md` | Install paths (PyPI, script, venv, extras) |
+| `docs/install.md` | Install from git / GitHub; PyPI section for when published |
 | `docs/sessions-and-memory.md` | Sessions, memory tiers, harvest |
 | `docs/documentation.md` | Index of repo docs |
 | `sandbox.py` | Dev sandbox CLI: `env`, `init`, `refresh` (keeps API keys unless `--wipe-keys`), `run`, `shell` |

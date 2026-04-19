@@ -4,7 +4,7 @@ PackageVersion: 0.2.0b2
 PackageName: tlm
 PackageLocale: en-US
 Publisher: Owner
-License: MIT
+License: Apache-2.0
 ShortDescription: Terminal LLM helper
 Installers:
   - Architecture: x64

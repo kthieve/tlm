@@ -90,7 +90,7 @@ def __fish_escape(s: str) -> str:
 
 def cmd_init(_ns: argparse.Namespace) -> int:
     r = subprocess.run(
-        [sys.executable, "-m", "tlm", "init"],
+        [sys.executable, "-m", "tlm", "init", "--no-wizard"],
         cwd=REPO_ROOT,
         env=merged_child_env(),
         check=False,
@@ -113,7 +113,7 @@ def cmd_refresh(ns: argparse.Namespace) -> int:
         return r.returncode
 
     r2 = subprocess.run(
-        [sys.executable, "-m", "tlm", "init"],
+        [sys.executable, "-m", "tlm", "init", "--no-wizard"],
         cwd=REPO_ROOT,
         env=merged_child_env(),
         check=False,

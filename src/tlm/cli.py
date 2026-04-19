@@ -13,6 +13,7 @@ from tlm.completion import emit as emit_completion
 from tlm.modes.do import run_do
 from tlm.modes.write import run_write
 from tlm.providers.registry import describe_providers, get_provider
+from tlm.setup_wizard import maybe_first_run_wizard, run_setup_wizard
 from tlm.harvest import auto_harvest_session_if_due
 from tlm.session import (
     Session,
@@ -169,8 +170,6 @@ def cmd_ask(
     if not text.strip():
         print("error: empty question", file=sys.stderr)
         return 2
-    from tlm.setup_wizard import maybe_first_run_wizard
-
     settings = maybe_first_run_wizard()
     try:
         prov = get_provider(provider, settings=settings)
@@ -417,7 +416,6 @@ def cmd_usage(ns: argparse.Namespace) -> int:
 def cmd_init(ns: argparse.Namespace) -> int:
     """Ensure XDG dirs exist; write default config.toml if missing."""
     from tlm.config import data_dir, sessions_dir, state_dir
-    from tlm.setup_wizard import run_setup_wizard
 
     config_dir()
     data_dir()
@@ -590,8 +588,6 @@ def cmd_write_ns(ns: argparse.Namespace) -> int:
     if not text.strip():
         print("error: empty write request", file=sys.stderr)
         return 2
-    from tlm.setup_wizard import maybe_first_run_wizard
-
     settings = maybe_first_run_wizard()
     try:
         prov = get_provider(ns.provider, settings=settings)
@@ -617,8 +613,6 @@ def cmd_do_ns(ns: argparse.Namespace) -> int:
     if not text.strip():
         print("error: empty do request", file=sys.stderr)
         return 2
-    from tlm.setup_wizard import maybe_first_run_wizard
-
     settings = maybe_first_run_wizard()
     try:
         prov = get_provider(ns.provider, settings=settings)

@@ -43,7 +43,7 @@ def is_setup_complete() -> bool:
 
 def write_setup_marker() -> None:
     p = setup_marker_path()
-    p.write_text(json.dumps({"version": SETUP_VERSION}, indent=0) + "\n", encoding="utf-8")
+    p.write_text(json.dumps({"version": SETUP_VERSION}) + "\n", encoding="utf-8")
 
 
 def ensure_xdg_dirs() -> None:

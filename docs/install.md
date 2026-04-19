@@ -1,34 +1,45 @@
 # Installing tlm
 
-## From PyPI (when published)
+**PyPI:** not published yet. Install from a **git clone** (below) or from **GitHub** with `pip` / `pipx` using a `git+https` URL (see [From GitHub](#from-github)).
 
-Isolated CLI:
+## From a git clone (recommended)
+
+```bash
+git clone https://github.com/OWNER/tlm.git
+cd tlm
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -e .
+```
+
+Replace `OWNER` with the real GitHub org or user. For one-off installs without cloning, use the GitHub URL method below.
+
+## From GitHub (`pip` / `pipx`, no PyPI)
+
+Use a **tag** (e.g. `v0.2.0b2`). Set the repo to match yours:
+
+```bash
+export TLM_GITHUB_REPO=OWNER/tlm   # required: your fork or upstream
+export VERSION=0.2.0b2
+pipx install "git+https://github.com/${TLM_GITHUB_REPO}.git@v${VERSION}" --force
+```
+
+Or the repo’s installer script (after you trust and verify it):
+
+```bash
+export TLM_GITHUB_REPO=OWNER/tlm
+bash scripts/install.sh 0.2.0b2
+```
+
+The script installs from `git+https://github.com/${TLM_GITHUB_REPO}.git@v<version>` using `pipx`, or a fallback venv under `~/.local/share/tlm-venv` if `pipx` is missing.
+
+## PyPI (when published)
 
 ```bash
 pipx install "tlm==0.2.0b2"
 # or
 pip install --user "tlm==0.2.0b2"
-```
-
-## From GitHub
-
-Use the installer script: download it, verify the SHA256 from the release, then run it. Avoid unchecked `curl … | bash` pipelines.
-
-```bash
-# After verifying the script checksum from the release page:
-bash scripts/install.sh 0.2.0b2
-```
-
-Release artifacts on GitHub may include wheels, sdist, `tlm.pyz` zipapp, and checksums (see `.github/workflows/release.yml`).
-
-## From a git clone (development)
-
-```bash
-cd /path/to/tlm
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -e .
 ```
 
 ## Optional extras

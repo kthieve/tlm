@@ -21,6 +21,8 @@ _tlm() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   if [ "${COMP_CWORD}" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "gui ask write do providers sessions usage completion init config new harvest help paths allow unallow ?" -- "${cur}") )
+  elif [ "${COMP_CWORD}" -eq 2 ] && [ "${COMP_WORDS[1]}" = "init" ]; then
+    COMPREPLY=( $(compgen -W "--wizard --no-wizard" -- "${cur}") )
   fi
 }
 complete -F _tlm tlm
@@ -44,6 +46,8 @@ compdef _tlm tlm
 
 _FISH = r"""
 complete -c tlm -n "__fish_use_subcommand" -a init -d "Create dirs and default config"
+complete -c tlm -n '__fish_seen_subcommand_from init' -l wizard -d "Run setup wizard after init"
+complete -c tlm -n '__fish_seen_subcommand_from init' -l no-wizard -d "Skip setup wizard prompts"
 complete -c tlm -n "__fish_use_subcommand" -a config -d "TUI settings (config gui for window)"
 complete -c tlm -n "__fish_use_subcommand" -a gui -d "Tk configuration UI"
 complete -c tlm -n "__fish_use_subcommand" -a ask -d "Ask the model"

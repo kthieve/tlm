@@ -1,7 +1,7 @@
 # tlm
 
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat)](LICENSE)
 
 **tlm** is a **terminal-first LLM assistant** for Linux: ask questions in plain language, keep **sessions**, optionally let the model suggest **read-only shell checks** and **web fetches** (you approve each step), and use **write** / **do** modes when you want files or commands executed with previews. It talks to **OpenAI-compatible** HTTP APIs and includes a small **Tk** or **FLTK** settings window.
 
@@ -43,13 +43,15 @@
 
 1. **Python 3.11+** and an API key for your provider.
 
-2. **Install** (pick one — full detail in [docs/install.md](docs/install.md)):
+2. **Install** — **not on PyPI yet**; use a clone or a GitHub `git+https` URL ([docs/install.md](docs/install.md)):
 
    ```bash
-   pipx install "tlm==0.2.0b2"
+   git clone https://github.com/OWNER/tlm.git && cd tlm
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -e .
    ```
 
-   Or from a clone: `python3 -m venv .venv && source .venv/bin/activate && pip install -e .`
+   Replace `OWNER` with the real GitHub user or org.
 
 3. **Configure and run:**
 
@@ -68,11 +70,11 @@
 
 | Method | Command / note |
 |:-------|:---------------|
-| **PyPI** | `pipx install "tlm==0.2.0b2"` or `pip install --user "tlm==0.2.0b2"` |
-| **GitHub** | Verify script checksum, then `bash scripts/install.sh 0.2.0b2` |
-| **Development** | Clone, venv, `pip install -e .` (extras: see [install.md](docs/install.md)) |
+| **Git clone** | `pip install -e .` in a venv (primary path until PyPI) |
+| **GitHub only** | Set `TLM_GITHUB_REPO=owner/repo`, then `bash scripts/install.sh 0.2.0b2` or `pipx install "git+https://github.com/…/tlm.git@v0.2.0b2"` — see [install.md](docs/install.md) |
+| **PyPI** | Planned; not published yet |
 
-Releases may ship wheels, sdist, and a zipapp; see the repo’s release workflow for artifacts.
+Release artifacts (wheel, sdist, zipapp) may still appear on GitHub Releases when you cut a tag; see the repo workflow.
 
 ---
 
@@ -137,4 +139,4 @@ Details: [sandbox/README.md](sandbox/README.md).
 
 ## License
 
-[MIT License](LICENSE)
+[Apache License 2.0](LICENSE)
