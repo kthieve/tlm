@@ -497,7 +497,12 @@ def cmd_do_ns(ns: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tlm",
-        description="Terminal LLM helper (Linux). Run `tlm` with no args for help; natural questions: `tlm show me which cpu`.",
+        description=(
+            "Terminal LLM helper (Linux). Natural-language questions continue the last session; "
+            "`tlm new` / `tlm sessions` manage one-word session names. "
+            "Ready memory auto-injects into ask unless --clear-context; long-term memory is queried via ```tlm-mem``` "
+            "blocks or `tlm harvest`."
+        ),
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
@@ -599,7 +604,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_sess = sub.add_parser(
         "sessions",
-        help="Interactive TUI with no subcommand, or list/show/delete/rename/resume.",
+        help="Interactive TUI when run with no arguments; or list/show/delete/rename/resume.",
+        epilog="Examples: `tlm sessions` (picker), `tlm sessions list`, `tlm sessions resume work`.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sp = p_sess.add_subparsers(dest="sessions_cmd", required=False)
     sp.add_parser("list").set_defaults(_handler=cmd_sessions_dispatch)

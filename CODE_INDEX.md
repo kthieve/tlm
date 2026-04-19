@@ -2,13 +2,16 @@
 
 | Path | Role |
 |------|------|
-| `src/tlm/ask_tools.py` | Ask tool loop (`tlm-exec` blocks), Rich markdown + prompts |
+| `src/tlm/ask_tools.py` | Ask loop: `tlm-exec`, `tlm-mem`, ready-memory system prompt |
 | `src/tlm/cli.py` | argparse; `tlm ?`; init/config; natural-language ask; ask/write/do/gui/… |
 | `src/tlm/tui_config.py` | `tlm config` interactive terminal editor |
 | `src/tlm/config.py` | XDG paths, env keys, base URL / model env helpers |
 | `src/tlm/settings.py` | `config.toml` load/save (`$XDG_CONFIG_HOME/tlm/`) |
 | `src/tlm/_version.py` | `importlib.metadata` version lookup |
-| `src/tlm/session.py` | Sessions JSON, trim, last-session pointer |
+| `src/tlm/session.py` | Sessions JSON, keyword, resolve, trim, last-session pointer |
+| `src/tlm/memory.py` | Ready + long-term memory, safety filters, search |
+| `src/tlm/harvest.py` | Session → memory extraction, auto-harvest helper |
+| `src/tlm/sessions_tui.py` | `tlm sessions` interactive terminal picker |
 | `src/tlm/jsonutil.py` | Extract JSON from LLM output |
 | `src/tlm/completion.py` | bash/zsh/fish completion snippets |
 | `src/tlm/telemetry/log.py` | JSONL request log + rotation + `summarize_usage` |
@@ -22,7 +25,7 @@
 | `src/tlm/safety/shell.py` | Denylist + package-manager guard |
 | `src/tlm/safety/profiles.py` | `strict` / `standard` / `trusted`, read-only detection |
 | `src/tlm/safety/gate.py` | Interactive confirm + `$EDITOR` |
-| `src/tlm/gui/app.py` | Tk: Keys, Sessions, Usage, Logs, Permissions |
+| `src/tlm/gui/app.py` | Tk: Keys, Sessions, Memory, Usage, Logs, Permissions |
 | `docs/tlm.1` | Man page stub |
 | `sandbox.py` | Dev sandbox CLI: `env`, `init`, `refresh` (keeps API keys unless `--wipe-keys`), `run`, `shell` |
 | `sandbox/README.md` | How to use the sandbox |

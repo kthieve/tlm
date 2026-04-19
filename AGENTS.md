@@ -10,7 +10,7 @@
 
 - **Never** auto-run shell commands or write files without the same interactive confirm flow the CLI uses (preview → user `y`).
 - Extend `tlm/safety/shell.py` when adding execution; prefer `subprocess.run(..., shell=False)`, timeouts, and explicit argv lists (`tlm/modes/do.py`).
-- Session JSON lives under `XDG_DATA_HOME/tlm/sessions/`; request log JSONL under `XDG_STATE_HOME/tlm/requests.jsonl`.
+- Session JSON lives under `XDG_DATA_HOME/tlm/sessions/`; ready/long-term memory under `XDG_DATA_HOME/tlm/memory/` (never store API keys or secrets — see `tlm/memory.py` rules); request log JSONL under `XDG_STATE_HOME/tlm/requests.jsonl`.
 - User config: `XDG_CONFIG_HOME/tlm/config.toml` (`tlm/settings.py`). Optional: `pipx install .` for isolated CLI installs.
 - Canonical requirements: `requirements.txt` + `pyproject.toml` deps should stay aligned.
 
@@ -22,7 +22,7 @@
 - `tlm init` — create XDG dirs + default `config.toml` if missing
 - `tlm config` — terminal settings UI; `tlm config gui` or `tlm gui` for Tk
 - `tlm write …`, `tlm do …`
-- `tlm providers`, `tlm sessions …`, `tlm usage`, `tlm completion bash|zsh|fish`
+- `tlm providers`, `tlm sessions` (TUI) / `tlm sessions list|resume|…`, `tlm new`, `tlm harvest`, `tlm usage`, `tlm completion bash|zsh|fish`
 
 ## Docs
 

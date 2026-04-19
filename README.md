@@ -74,7 +74,16 @@ Initialize XDG dirs and default config:
 tlm init
 ```
 
-Persistent settings: `$XDG_CONFIG_HOME/tlm/config.toml` — use `tlm config` or the GUI. Sessions and request logs use XDG data/state (see `tlm init` output).
+Persistent settings: `$XDG_CONFIG_HOME/tlm/config.toml` — use `tlm config` or the GUI. Sessions live in `$XDG_DATA_HOME/tlm/sessions/`; **memory** (ready + long-term) in `$XDG_DATA_HOME/tlm/memory/`. Request logs: `$XDG_STATE_HOME/tlm/requests.jsonl` (see `tlm init` output).
+
+### Sessions & memory
+
+- **Last session** — Natural-language asks keep using the same session until `tlm new` or `tlm sessions resume SPEC` (keyword or id).
+- **Keywords** — One-word names per session; the first ask after no prior session picks a keyword via the model.
+- **Ready memory** — Short facts auto-injected into the ask system prompt; skip for one turn with `tlm ask --clear-context` (`--fresh`). Edit in **`tlm gui` → Memory** or `tlm config` → `m`.
+- **Long-term memory** — Searchable JSONL store; in chat the model can emit a fenced **`tlm-mem`** block with JSON like `{"op": "search", "q": "short query"}`.
+
+- **Harvest** — `tlm harvest` (or the sessions TUI / GUI) proposes tiny summaries; lines matching secret patterns are dropped. Use `--dry-run` to preview.
 
 ---
 
@@ -85,7 +94,7 @@ Persistent settings: `$XDG_CONFIG_HOME/tlm/config.toml` — use `tlm config` or 
 | `tlm` · `tlm help` | Print CLI help |
 | `tlm --version` | Show version ([`pyproject.toml`](pyproject.toml)) |
 | `tlm which cpu am i using` | Natural-language ask (same as `tlm ask …`) |
-| `tlm ask …` · `tlm ? …` | Ask with `--session`, `--provider`, `--new`, `--budget`, `--no-tools`, … |
+| `tlm ask …` · `tlm ? …` | Ask with `--session SPEC`, `--provider`, `--new`/`--keyword`, `--clear-context`, `--budget`, `--no-tools`, … |
 | `tlm write …` | Generate files (preview + confirm) |
 | `tlm do …` | Planned commands (preview + confirm) |
 | `tlm gui` · `tlm config gui` | Settings window |

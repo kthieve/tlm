@@ -124,7 +124,10 @@ def auto_harvest_session_if_due(
     delta = min_delta if min_delta is not None else thr
     if len(sess.messages) - sess.message_count_at_last_harvest < delta:
         return
-    items = extract_harvest_items(prov, sess)
+    try:
+        items = extract_harvest_items(prov, sess)
+    except Exception:
+        return
     if items:
         apply_harvest_items(items, source_session=sess.id, settings=settings, push_ready_summary=True)
     sess.last_harvested_at = datetime.now(timezone.utc).isoformat()
