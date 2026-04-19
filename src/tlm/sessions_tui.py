@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from tlm.harvest import auto_harvest_session_if_due, extract_harvest_items
+from tlm.harvest import extract_harvest_items
 from tlm.providers.registry import get_provider
 from tlm.session import (
     delete_session,

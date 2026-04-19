@@ -31,11 +31,15 @@ def run_config_tui() -> int:
         print(f"  5) safety profile     [{s.safety_profile}]", flush=True)
         print(f"  6) API key ({pid})    [{_mask(key)}]", flush=True)
         print("  7) model override for current provider (per-provider)", flush=True)
+        print(f"  m) memory enabled      [{s.memory_enabled}]", flush=True)
+        print(f"     ready budget chars  [{s.memory_ready_budget_chars}]", flush=True)
+        print(f"     auto-harvest every  [{s.memory_auto_harvest_threshold_messages}] msgs", flush=True)
+        print(f"     harvest on switch   [{s.memory_harvest_on_switch}]", flush=True)
         print("  8) Save and exit", flush=True)
         print("  9) Exit without saving", flush=True)
         print("  g) Open GUI (`tlm config gui`)", flush=True)
         try:
-            choice = input("\nChoice [1-9,g]: ").strip().lower()
+            choice = input("\nChoice [1-9,m,g]: ").strip().lower()
         except EOFError:
             print("\n(use 8 to save, 9 to quit)", file=sys.stderr)
             return 1
@@ -88,6 +92,37 @@ def run_config_tui() -> int:
             m = input("model for that provider: ").strip()
             if m:
                 s.models[prov] = m
+                dirty = True
+        elif choice == "m":
+            v = input(f"memory enabled [y/N] (current {s.memory_enabled}): ").strip().lower()
+            if v in ("y", "yes"):
+                s.memory_enabled = True
+                dirty = True
+            elif v in ("n", "no"):
+                s.memory_enabled = False
+                dirty = True
+            v2 = input(f"ready memory budget chars [{s.memory_ready_budget_chars}]: ").strip()
+            if v2:
+                try:
+                    s.memory_ready_budget_chars = int(v2)
+                    dirty = True
+                except ValueError:
+                    print("invalid int", file=sys.stderr)
+            v3 = input(
+                f"auto-harvest after N new messages [{s.memory_auto_harvest_threshold_messages}]: "
+            ).strip()
+            if v3:
+                try:
+                    s.memory_auto_harvest_threshold_messages = int(v3)
+                    dirty = True
+                except ValueError:
+                    print("invalid int", file=sys.stderr)
+            v4 = input(f"harvest previous session on switch [y/N] ({s.memory_harvest_on_switch}): ").strip().lower()
+            if v4 in ("y", "yes"):
+                s.memory_harvest_on_switch = True
+                dirty = True
+            elif v4 in ("n", "no"):
+                s.memory_harvest_on_switch = False
                 dirty = True
         elif choice == "8":
             if dirty:

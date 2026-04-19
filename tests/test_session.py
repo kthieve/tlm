@@ -21,6 +21,7 @@ def test_estimate_tokens_positive() -> None:
         created="t",
         updated="t",
         title="t",
+        keyword="k",
         messages=[{"role": "user", "content": "hello"}],
     )
     assert estimate_messages_tokens(s.messages) >= 1

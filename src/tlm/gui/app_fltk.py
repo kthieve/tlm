@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 
 from tlm import __version__
+from tlm.memory import STORAGE_RULES_TEXT, iter_longterm, load_ready, save_ready
 from tlm.providers.registry import REAL_PROVIDER_IDS, get_provider
-from tlm.session import list_sessions, load_session
+from tlm.session import list_sessions, load_session, write_last_session_id
 from tlm.settings import load_settings, save_settings
 from tlm.telemetry import requests_log_path, summarize_usage
 
@@ -96,7 +97,25 @@ def run_gui_fltk() -> None:
             self.sess_json = Fl_Multiline_Input(20, 235, 660, 195)
             br = Fl_Button(580, 438, 100, 28, "Refresh")
             br.callback(self._refresh_sessions)
+            bres = Fl_Button(460, 438, 110, 28, "Set active")
+            bres.callback(self._sess_resume)
             gs.end()
+
+            # Memory (view/edit ready + list long-term; rules text)
+            gm = Fl_Group(8, 35, 704, 425, "Memory")
+            gm.begin()
+            Fl_Box(20, 55, 660, 20, "Rules (see README); ready memory = short injected facts")
+            self.mem_rules = Fl_Multiline_Input(20, 78, 660, 72)
+            self.mem_rules.value(STORAGE_RULES_TEXT)
+            Fl_Box(20, 155, 200, 20, "Ready (one line per fact)")
+            self.mem_ready = Fl_Multiline_Input(20, 178, 660, 90)
+            Fl_Box(20, 275, 200, 20, "Long-term (read-only list)")
+            self.mem_lt = Fl_Browser(20, 298, 660, 100)
+            bm = Fl_Button(480, 408, 100, 28, "Save ready")
+            bm.callback(self._save_ready_fltk)
+            bmr = Fl_Button(590, 408, 90, 28, "Refresh")
+            bmr.callback(self._refresh_memory_fltk)
+            gm.end()
 
             # Usage
             gu = Fl_Group(8, 35, 704, 425, "Usage")
@@ -138,6 +157,7 @@ def run_gui_fltk() -> None:
             self.win.end()
 
             self._refresh_sessions()
+            self._refresh_memory_fltk()
             self._refresh_usage()
             self._refresh_logs()
             self._load_key_for_provider()
@@ -189,15 +209,44 @@ def run_gui_fltk() -> None:
         def _refresh_sessions(self, *_a: object) -> None:
             self.sess_browser.clear()
             for s in list_sessions():
-                self.sess_browser.add(f"{s.id}\t{s.updated}\t{s.title}")
+                self.sess_browser.add(f"{s.keyword}\t{s.id}\t{s.updated}\t{s.title}")
             self.sess_json.value("")
+
+        def _sess_resume(self, *_a: object) -> None:
+            line = int(self.sess_browser.value())
+            if line < 1:
+                return
+            text = self.sess_browser.text(line)
+            parts = text.split("\t")
+            sid = parts[1].strip() if len(parts) > 1 else parts[0].strip()
+            write_last_session_id(sid)
+            fl_alert("tlm: Active session updated.")
+
+        def _refresh_memory_fltk(self, *_a: object) -> None:
+            self.mem_ready.value("\n".join(load_ready()))
+            self.mem_lt.clear()
+            for e in iter_longterm():
+                self.mem_lt.add(f"{e.text[:120]}\t{','.join(e.tags)}\t{e.id}")
+
+        def _save_ready_fltk(self, *_a: object) -> None:
+            st = load_settings()
+            lines = [ln.strip() for ln in self.mem_ready.value().splitlines() if ln.strip()]
+            from tlm.memory import is_safe_to_store
+
+            for ln in lines:
+                if not is_safe_to_store(ln)[0]:
+                    fl_alert(f"tlm: unsafe line rejected: {ln[:80]}")
+                    return
+            save_ready(lines, budget_chars=st.memory_ready_budget_chars)
+            fl_alert("tlm: Saved ready memory.")
 
         def _on_sess_pick(self, *_a: object) -> None:
             line = int(self.sess_browser.value())
             if line < 1:
                 return
             text = self.sess_browser.text(line)
-            sid = text.split("\t", 1)[0].strip()
+            parts = text.split("\t")
+            sid = parts[1].strip() if len(parts) > 1 else parts[0].strip()
             sess = load_session(str(sid))
             if sess is None:
                 self.sess_json.value("session not found")
