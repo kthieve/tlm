@@ -12,10 +12,9 @@ BIN_DIR="${HOME}/.local/bin"
 VENV_DIR="${HOME}/.local/share/tlm-venv"
 GIT_URL="${TLM_GIT_URL:-}"
 
+# Upstream default when unset (forks: export TLM_GITHUB_REPO=you/tlm).
 if [[ -z "$REPO" && -z "$GIT_URL" ]]; then
-  echo "error: set TLM_GITHUB_REPO=owner/repo (GitHub slug) or TLM_GIT_URL to a full git URL." >&2
-  echo "  example: TLM_GITHUB_REPO=myorg/tlm bash scripts/install.sh ${VERSION}" >&2
-  exit 1
+  REPO="kthieve/tlm"
 fi
 
 if [[ -z "$GIT_URL" ]]; then

@@ -2,6 +2,24 @@
 
 **PyPI:** not published yet. Install from a **git clone** (below) or from **GitHub** with `pip` / `pipx` using a `git+https` URL (see [From GitHub](#from-github)).
 
+## One-liner (pipx or venv; no clone)
+
+Uses the installer from the default branch. Review the script before piping; use a **tagged** URL for a known revision.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kthieve/tlm/main/scripts/install.sh | bash -s 0.2.0b2
+```
+
+Ensure `~/.local/bin` is on your `PATH` (the script prints a hint if it is not). Forks: `TLM_GITHUB_REPO=you/tlm curl -fsSL … | bash -s 0.2.0b2`.
+
+After install, upgrade to the latest GitHub release when prompted (if you enabled update checks in config) or run:
+
+```bash
+tlm update --yes
+```
+
+(`tlm update` without `--yes` only shows the command that would run.)
+
 ## From a git clone (recommended)
 
 ```bash
@@ -20,19 +38,23 @@ Replace `OWNER` with the real GitHub org or user. For one-off installs without c
 Use a **tag** (e.g. `v0.2.0b2`). Set the repo to match yours:
 
 ```bash
-export TLM_GITHUB_REPO=OWNER/tlm   # required: your fork or upstream
+export TLM_GITHUB_REPO=OWNER/tlm   # your fork or upstream (omit for default kthieve/tlm with install.sh)
 export VERSION=0.2.0b2
 pipx install "git+https://github.com/${TLM_GITHUB_REPO}.git@v${VERSION}" --force
 ```
 
-Or the repo’s installer script (after you trust and verify it):
+Or the repo’s installer script (after you trust and verify it); `TLM_GITHUB_REPO` defaults to `kthieve/tlm` if unset:
 
 ```bash
-export TLM_GITHUB_REPO=OWNER/tlm
 bash scripts/install.sh 0.2.0b2
+# forks: TLM_GITHUB_REPO=you/tlm bash scripts/install.sh 0.2.0b2
 ```
 
-The script installs from `git+https://github.com/${TLM_GITHUB_REPO}.git@v<version>` using `pipx`, or a fallback venv under `~/.local/share/tlm-venv` if `pipx` is missing.
+The script installs from `git+https://github.com/${TLM_GITHUB_REPO}.git@v<version>` using `pipx`, or a fallback venv under `~/.local/share/tlm-venv` if `pipx` is missing. If `TLM_GITHUB_REPO` is unset, it defaults to `kthieve/tlm`.
+
+### Update checks (optional)
+
+In `config.toml`, set `check_for_updates = true` (or use `tlm config` → updates). Once per day at most, tlm may print one line to stderr if a newer **GitHub release** exists. Disable with `TLM_NO_UPDATE_CHECK=1`. Nothing is installed automatically; run `tlm update --yes`.
 
 ## PyPI (when published)
 

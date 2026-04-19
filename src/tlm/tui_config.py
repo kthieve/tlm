@@ -35,11 +35,12 @@ def run_config_tui() -> int:
         print(f"     ready budget chars  [{s.memory_ready_budget_chars}]", flush=True)
         print(f"     auto-harvest every  [{s.memory_auto_harvest_threshold_messages}] msgs", flush=True)
         print(f"     harvest on switch   [{s.memory_harvest_on_switch}]", flush=True)
+        print(f"  u) check GitHub updates [{s.check_for_updates}]  repo [{s.github_repo or '(auto)'}]", flush=True)
         print("  8) Save and exit", flush=True)
         print("  9) Exit without saving", flush=True)
         print("  g) Open GUI (`tlm config gui`)", flush=True)
         try:
-            choice = input("\nChoice [1-9,m,g]: ").strip().lower()
+            choice = input("\nChoice [1-9,m,u,g]: ").strip().lower()
         except EOFError:
             print("\n(use 8 to save, 9 to quit)", file=sys.stderr)
             return 1
@@ -124,6 +125,25 @@ def run_config_tui() -> int:
             elif v4 in ("n", "no"):
                 s.memory_harvest_on_switch = False
                 dirty = True
+        elif choice == "u":
+            v = input(f"notify on new GitHub releases [y/N] ({s.check_for_updates}): ").strip().lower()
+            if v in ("y", "yes"):
+                s.check_for_updates = True
+                dirty = True
+            elif v in ("n", "no"):
+                s.check_for_updates = False
+                dirty = True
+            gr = input(
+                f"github_repo owner/slug (empty = use install metadata / env) [{s.github_repo or ''}]: "
+            ).strip()
+            if gr:
+                s.github_repo = gr
+                dirty = True
+            elif gr == "" and s.github_repo:
+                c = input("Clear saved github_repo? [y/N]: ").strip().lower()
+                if c in ("y", "yes"):
+                    s.github_repo = None
+                    dirty = True
         elif choice == "8":
             if dirty:
                 save_settings(s)

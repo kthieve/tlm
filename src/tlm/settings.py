@@ -45,6 +45,9 @@ class UserSettings:
     web_max_output_chars: int = 48_000
     web_disable_lightpanda_telemetry: bool = True
     web_allow_http: bool = False
+    # GitHub release hint (stderr); disable with TLM_NO_UPDATE_CHECK=1.
+    check_for_updates: bool = False
+    github_repo: str | None = None  # owner/repo when not in install metadata
 
 
 def _toml_escape_str(s: str) -> str:
@@ -75,6 +78,9 @@ def save_settings(s: UserSettings) -> None:
         f"web_disable_lightpanda_telemetry = {str(bool(s.web_disable_lightpanda_telemetry)).lower()}"
     )
     lines.append(f"web_allow_http = {str(bool(s.web_allow_http)).lower()}")
+    lines.append(f"check_for_updates = {str(bool(s.check_for_updates)).lower()}")
+    if s.github_repo is not None:
+        lines.append(f"github_repo = {_toml_escape_str(s.github_repo)}")
     if s.models:
         lines.append("")
         lines.append("[models]")
@@ -131,6 +137,8 @@ def load_settings() -> UserSettings:
         web_max_output_chars=int(data.get("web_max_output_chars", 48_000)),
         web_disable_lightpanda_telemetry=_bool("web_disable_lightpanda_telemetry", True),
         web_allow_http=_bool("web_allow_http", False),
+        check_for_updates=_bool("check_for_updates", False),
+        github_repo=data.get("github_repo") if isinstance(data.get("github_repo"), str) else None,
     )
 
 

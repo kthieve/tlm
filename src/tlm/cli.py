@@ -37,6 +37,7 @@ from tlm.settings import (
     save_settings,
     warn_config_permissions,
 )
+from tlm.self_update import cmd_update_ns, maybe_print_update_notice
 from tlm.telemetry import log_event, summarize_usage
 
 # First argv token must be one of these to use structured subcommands (else → natural-language ask).
@@ -59,6 +60,7 @@ KNOWN_SUBCOMMANDS = frozenset(
         "paths",
         "allow",
         "unallow",
+        "update",
     }
 )
 
@@ -823,6 +825,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_un.add_argument("--project-root", metavar="DIR", default=None)
     p_un.set_defaults(_handler=cmd_unallow_ns)
 
+    p_upd = sub.add_parser(
+        "update",
+        help="Reinstall tlm from GitHub (pipx or ~/.local/share/tlm-venv); use --yes to run.",
+    )
+    p_upd.add_argument(
+        "--ref",
+        dest="update_ref",
+        metavar="GIT_REF",
+        default=None,
+        help='Git ref (default: latest GitHub release tag), e.g. main',
+    )
+    p_upd.add_argument(
+        "--version",
+        dest="update_version",
+        metavar="VER",
+        default=None,
+        help="Version like 0.2.0b2 (implies tag v…); overrides --ref",
+    )
+    p_upd.add_argument(
+        "--yes",
+        action="store_true",
+        help="Run pipx/pip after showing the command",
+    )
+    p_upd.set_defaults(_handler=lambda a: cmd_update_ns(a, load_settings()))
+
     return p
 
 
@@ -847,6 +874,8 @@ def run_gui_safe() -> int:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     warn_config_permissions()
+    if argv:
+        maybe_print_update_notice(load_settings(), argv0=argv[0])
     parser = build_parser()
 
     if not argv:

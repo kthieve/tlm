@@ -43,7 +43,15 @@
 
 1. **Python 3.11+** and an API key for your provider.
 
-2. **Install** — **not on PyPI yet**; use a clone or a GitHub `git+https` URL ([docs/install.md](docs/install.md)):
+2. **Install** — **not on PyPI yet**; use a clone, a one-liner, or a GitHub `git+https` URL ([docs/install.md](docs/install.md)):
+
+   **Global CLI (pipx or `~/.local/share/tlm-venv`):** ensure `~/.local/bin` is on `PATH`, then:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/kthieve/tlm/main/scripts/install.sh | bash -s 0.2.0b2
+   ```
+
+   **Editable dev install:**
 
    ```bash
    git clone https://github.com/kthieve/tlm.git && cd tlm
