@@ -8,12 +8,14 @@ import subprocess
 import sys
 import time
 
+from tlm.memory import format_ready_for_prompt, format_search_results_for_prompt, prune_ready_to_budget, search_longterm
 from tlm.providers.base import LLMProvider
 from tlm.safety import check_argv
 from tlm.session import Session, append_assistant, append_user
 from tlm.settings import UserSettings
 
 TLM_EXEC_PATTERN = re.compile(r"```tlm-exec\s*\n(\[[\s\S]*?\])\s*\n```", re.IGNORECASE)
+TLM_MEM_PATTERN = re.compile(r"```tlm-mem\s*\n(\{[\s\S]*?\})\s*\n```", re.IGNORECASE)
 
 MAX_TOOL_ROUNDS = 6
 
@@ -34,29 +36,78 @@ Rules:
 - After the user provides command output, answer concisely. Avoid new `tlm-exec` blocks unless you still lack critical facts (keep rounds minimal).
 """
 
+MEM_BLOCK_HELP = """
+You may query stored **long-term memory** (read-only) with a fenced block:
 
-def split_reply_and_execs(content: str) -> tuple[str, list[list[str]]]:
-    """Remove only well-formed ```tlm-exec``` blocks from visible text; parse argv lists."""
+```tlm-mem
+{"op": "search", "q": "short search query"}
+```
+
+Use this when recalling stable facts the user may have stored earlier. Keep queries short.
+"""
+
+
+def split_reply_tools(content: str) -> tuple[str, list[list[str]], list[dict[str, object]]]:
+    """Remove well-formed ```tlm-exec``` and ```tlm-mem``` blocks from visible text."""
+    matches: list[tuple[str, int, int, str]] = []
+    for m in TLM_EXEC_PATTERN.finditer(content):
+        matches.append(("exec", m.start(), m.end(), m.group(1)))
+    for m in TLM_MEM_PATTERN.finditer(content):
+        matches.append(("mem", m.start(), m.end(), m.group(1)))
+    matches.sort(key=lambda x: x[1])
+
     argvs: list[list[str]] = []
+    mem_ops: list[dict[str, object]] = []
     out_chunks: list[str] = []
     pos = 0
-    for m in TLM_EXEC_PATTERN.finditer(content):
-        out_chunks.append(content[pos : m.start()])
-        raw = m.group(1).strip()
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            out_chunks.append(m.group(0))
-            pos = m.end()
-            continue
-        if isinstance(data, list) and data and all(isinstance(x, str) for x in data):
-            argvs.append(list(data))
+    for kind, start, end, body in matches:
+        out_chunks.append(content[pos:start])
+        pos = end
+        raw = body.strip()
+        if kind == "exec":
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                out_chunks.append(content[start:end])
+                continue
+            if isinstance(data, list) and data and all(isinstance(x, str) for x in data):
+                argvs.append(list(data))
+            else:
+                out_chunks.append(content[start:end])
         else:
-            out_chunks.append(m.group(0))
-        pos = m.end()
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                out_chunks.append(content[start:end])
+                continue
+            if isinstance(data, dict):
+                mem_ops.append(data)
+            else:
+                out_chunks.append(content[start:end])
     out_chunks.append(content[pos:])
     visible = "".join(out_chunks).strip()
-    return visible, argvs
+    return visible, argvs, mem_ops
+
+
+def split_reply_and_execs(content: str) -> tuple[str, list[list[str]]]:
+    """Backward-compatible: visible text + argv lists only."""
+    v, a, _ = split_reply_tools(content)
+    return v, a
+
+
+def _mem_feedback(mem_ops: list[dict[str, object]]) -> str:
+    parts: list[str] = []
+    for op in mem_ops:
+        if str(op.get("op", "")).lower() != "search":
+            parts.append(f"(unknown tlm-mem op: {op.get('op')!r})")
+            continue
+        q = str(op.get("q", "")).strip()
+        if not q:
+            parts.append("(tlm-mem search missing q)")
+            continue
+        hits = search_longterm(q, k=5)
+        parts.append(format_search_results_for_prompt(hits))
+    return "\n\n".join(parts).strip()
 
 
 def _stdout_console():
@@ -120,6 +171,23 @@ def estimate_ask_tokens(prov: LLMProvider, sys_prompt: str, sess: Session) -> tu
     return in_t, out_t
 
 
+def _build_system_prompt(
+    tools: bool,
+    *,
+    memory_enabled: bool,
+    clear_context: bool,
+    ready_items: list[str],
+    ready_budget: int,
+) -> str:
+    ready_block = ""
+    if memory_enabled and not clear_context and ready_items:
+        pruned = prune_ready_to_budget(ready_items, ready_budget)
+        ready_block = format_ready_for_prompt(pruned) + "\n"
+    base = SYSTEM_TOOLS if tools else SYSTEM_PLAIN
+    mem_help = (MEM_BLOCK_HELP + "\n") if memory_enabled else ""
+    return f"{ready_block}{base}\n{mem_help}".strip() + "\n"
+
+
 def run_interactive_ask(
     prov: LLMProvider,
     sess: Session,
@@ -127,6 +195,7 @@ def run_interactive_ask(
     *,
     tools: bool,
     settings: UserSettings,
+    clear_context: bool = False,
 ) -> tuple[int, int, int, int]:
     """
     Append user message, chat (optionally tool loop), print final markdown.
@@ -136,7 +205,19 @@ def run_interactive_ask(
     msgs: list[dict[str, str]] = [
         {"role": str(m["role"]), "content": str(m["content"])} for m in sess.messages
     ]
-    sys_prompt = SYSTEM_TOOLS if tools else SYSTEM_PLAIN
+    memory_on = bool(settings.memory_enabled)
+    ready_items: list[str] = []
+    if memory_on:
+        from tlm.memory import load_ready
+
+        ready_items = load_ready()
+    sys_prompt = _build_system_prompt(
+        tools,
+        memory_enabled=memory_on,
+        clear_context=clear_context,
+        ready_items=ready_items,
+        ready_budget=int(settings.memory_ready_budget_chars),
+    )
     timeout = min(float(settings.timeout), 120.0)
     t_all = time.perf_counter()
     rounds = 0
@@ -152,55 +233,74 @@ def run_interactive_ask(
         append_assistant(sess, reply)
         msgs.append({"role": "assistant", "content": reply})
 
-        visible, argvs = split_reply_and_execs(reply)
-        can_prompt = tools and bool(argvs) and sys.stdin.isatty()
+        visible, argvs, mem_ops = split_reply_tools(reply)
+        mem_fb = _mem_feedback(mem_ops) if (memory_on and mem_ops) else ""
 
-        if not can_prompt:
-            if tools and argvs and not sys.stdin.isatty():
-                note = (
-                    "\n\n*(Shell tools were skipped: stdin is not a TTY. "
-                    "Run in a real terminal to approve commands, or use `tlm ask --no-tools`.)*"
-                )
-                print_markdown((visible if visible.strip() else reply) + note)
-            else:
-                print_markdown(visible if visible.strip() else reply)
-            in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
-            return 0, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
+        exec_wanted = bool(tools and argvs)
+        exec_can_prompt = exec_wanted and sys.stdin.isatty()
 
-        if visible.strip():
-            print_markdown(visible)
-
-        pcon, RichPanel, RichConfirm = _rich_prompt_kit()
-        use_rich_prompts = pcon is not None and RichPanel is not None and RichConfirm is not None
-
+        # Combine memory feedback + exec (or non-tty skip note) into one user turn when needed
         feedback_parts: list[str] = []
-        for argv in argvs:
-            ok, reason = check_argv(argv)
-            if not ok:
-                feedback_parts.append(f"Blocked {argv!r}: {reason}")
-                continue
-            cmd_line = " ".join(argv)
-            if use_rich_prompts:
-                pcon.print(RichPanel(cmd_line, title="Proposed command", border_style="yellow"))
-                run = RichConfirm.ask("Execute on your machine?", default=False, console=pcon)
-            else:
-                print(f"\nProposed: {cmd_line}", file=sys.stderr, flush=True)
-                run = input("Execute? [y/N]: ").strip().lower() in ("y", "yes")
-            if not run:
-                feedback_parts.append(f"User declined: {cmd_line}")
-                continue
-            try:
-                _code, body = _run_argv(argv, timeout=timeout)
-                feedback_parts.append(f"$ {cmd_line}\n{body}")
-            except subprocess.TimeoutExpired:
-                feedback_parts.append(f"$ {cmd_line}\n(error: timeout after {timeout}s)")
-            except OSError as e:
-                feedback_parts.append(f"$ {cmd_line}\n(error: {e})")
+        if mem_fb:
+            feedback_parts.append(mem_fb)
 
-        feedback = "\n\n".join(feedback_parts) if feedback_parts else "(no commands run)"
-        append_user(sess, feedback)
-        msgs.append({"role": "user", "content": feedback})
-        rounds += 1
+        if exec_can_prompt:
+            if visible.strip():
+                print_markdown(visible)
+
+            pcon, RichPanel, RichConfirm = _rich_prompt_kit()
+            use_rich_prompts = pcon is not None and RichPanel is not None and RichConfirm is not None
+
+            exec_parts: list[str] = []
+            for argv in argvs:
+                ok, reason = check_argv(argv)
+                if not ok:
+                    exec_parts.append(f"Blocked {argv!r}: {reason}")
+                    continue
+                cmd_line = " ".join(argv)
+                if use_rich_prompts:
+                    pcon.print(RichPanel(cmd_line, title="Proposed command", border_style="yellow"))
+                    run = RichConfirm.ask("Execute on your machine?", default=False, console=pcon)
+                else:
+                    print(f"\nProposed: {cmd_line}", file=sys.stderr, flush=True)
+                    run = input("Execute? [y/N]: ").strip().lower() in ("y", "yes")
+                if not run:
+                    exec_parts.append(f"User declined: {cmd_line}")
+                    continue
+                try:
+                    _code, body = _run_argv(argv, timeout=timeout)
+                    exec_parts.append(f"$ {cmd_line}\n{body}")
+                except subprocess.TimeoutExpired:
+                    exec_parts.append(f"$ {cmd_line}\n(error: timeout after {timeout}s)")
+                except OSError as e:
+                    exec_parts.append(f"$ {cmd_line}\n(error: {e})")
+
+            feedback_parts.append("\n\n".join(exec_parts) if exec_parts else "(no commands run)")
+
+        elif exec_wanted and not sys.stdin.isatty():
+            note = (
+                "*(Shell tools were skipped: stdin is not a TTY. "
+                "Run in a real terminal to approve commands, or use `tlm ask --no-tools`.)*"
+            )
+            if mem_fb:
+                feedback_parts.append(note)
+            else:
+                print_markdown(
+                    (visible if visible.strip() else reply) + ("\n\n" + note if note else "")
+                )
+                in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
+                return 0, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
+
+        if feedback_parts:
+            combined = "\n\n".join(p for p in feedback_parts if p)
+            append_user(sess, combined)
+            msgs.append({"role": "user", "content": combined})
+            rounds += 1
+            continue
+
+        print_markdown(visible if visible.strip() else reply)
+        in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
+        return 0, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
 
     print("error: too many tool rounds (limit reached)", file=sys.stderr)
     in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)

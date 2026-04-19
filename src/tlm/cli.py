@@ -13,13 +13,17 @@ from tlm.completion import emit as emit_completion
 from tlm.modes.do import run_do
 from tlm.modes.write import run_write
 from tlm.providers.registry import describe_providers, get_provider
+from tlm.harvest import auto_harvest_session_if_due
 from tlm.session import (
+    Session,
     delete_session,
     list_sessions,
     load_session,
     new_session,
+    pick_keyword_for,
     read_last_session_id,
     rename_session,
+    resolve_session,
     save_session,
     trim_session_to_budget,
     write_last_session_id,
@@ -41,6 +45,9 @@ KNOWN_SUBCOMMANDS = frozenset(
         "completion",
         "init",
         "config",
+        "new",
+        "harvest",
+        "help",
     }
 )
 
@@ -71,7 +78,16 @@ def merge_prompt(user: str, blob: str) -> str:
 def parse_ask_tokens(tokens: list[str]) -> tuple[dict, str]:
     """Parse flags for `tlm ? …` form."""
     i = 0
-    opts: dict = {"session": None, "provider": None, "new": False, "last": False, "budget": 8000, "tools": True}
+    opts: dict = {
+        "session": None,
+        "provider": None,
+        "new": False,
+        "last": False,
+        "budget": 8000,
+        "tools": True,
+        "clear_context": False,
+        "keyword": None,
+    }
     while i < len(tokens):
         t = tokens[i]
         if t == "--session" and i + 1 < len(tokens):
@@ -82,12 +98,20 @@ def parse_ask_tokens(tokens: list[str]) -> tuple[dict, str]:
             opts["provider"] = tokens[i + 1]
             i += 2
             continue
+        if t == "--keyword" and i + 1 < len(tokens):
+            opts["keyword"] = tokens[i + 1]
+            i += 2
+            continue
         if t == "--new":
             opts["new"] = True
             i += 1
             continue
         if t == "--last":
             opts["last"] = True
+            i += 1
+            continue
+        if t in ("--clear-context", "--fresh"):
+            opts["clear_context"] = True
             i += 1
             continue
         if t == "--budget" and i + 1 < len(tokens):
@@ -115,12 +139,14 @@ def parse_since_days(s: str) -> int | None:
 def cmd_ask(
     text: str,
     *,
-    session_id: str | None,
+    session_spec: str | None,
     provider: str | None,
     new: bool,
     last: bool,
     budget: int,
     tools: bool = True,
+    clear_context: bool = False,
+    new_keyword: str | None = None,
 ) -> int:
     blob = read_stdin_blob()
     text = merge_prompt(text, blob)
@@ -128,34 +154,66 @@ def cmd_ask(
         print("error: empty question", file=sys.stderr)
         return 2
     settings = load_settings()
-    if new:
-        sess = new_session()
-    elif session_id:
-        sess = load_session(session_id)
-        if sess is None:
-            print(f"error: unknown session {session_id}", file=sys.stderr)
-            return 2
-    elif last:
-        lid = read_last_session_id()
-        sess = load_session(lid) if lid else new_session()
-        if sess is None:
-            sess = new_session()
-    else:
-        sess = new_session()
-
-    trim_session_to_budget(sess, budget)
     try:
         prov = get_provider(provider, settings=settings)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+
+    prev_last = read_last_session_id()
+    sess: Session | None = None
+
+    if new:
+        if settings.memory_enabled and settings.memory_harvest_on_switch and prev_last:
+            old = load_session(prev_last)
+            if old:
+                auto_harvest_session_if_due(old, prov, settings, min_delta=1)
+        kw = (new_keyword or "").strip()
+        if not kw:
+            try:
+                kw = input("Name for this session (one word): ").strip()
+            except EOFError:
+                print("error: need a session name (non-interactive stdin)", file=sys.stderr)
+                return 2
+        sess = new_session(keyword=kw)
+    elif session_spec:
+        sess = resolve_session(session_spec)
+        if sess is None:
+            print(f"error: unknown session {session_spec!r}", file=sys.stderr)
+            return 2
+        if (
+            settings.memory_enabled
+            and settings.memory_harvest_on_switch
+            and prev_last
+            and sess.id != prev_last
+        ):
+            old = load_session(prev_last)
+            if old:
+                auto_harvest_session_if_due(old, prov, settings, min_delta=1)
+    else:
+        _ = last  # --last is legacy; default is always “continue last session”
+        lid = read_last_session_id()
+        sess = load_session(lid) if lid else None
+        if sess is None:
+            base = pick_keyword_for(text, prov)
+            sess = new_session(keyword=base)
+
+    assert sess is not None
+    trim_session_to_budget(sess, budget)
     from tlm.ask_tools import run_interactive_ask
 
     exit_c, in_tok, out_tok, dt_ms = run_interactive_ask(
-        prov, sess, text, tools=tools, settings=settings
+        prov,
+        sess,
+        text,
+        tools=tools,
+        settings=settings,
+        clear_context=clear_context,
     )
     save_session(sess)
     write_last_session_id(sess.id)
+    if exit_c == 0:
+        auto_harvest_session_if_due(sess, prov, settings)
     model = getattr(prov, "model", "")
     from tlm.telemetry.prices import estimate_cost_usd
 
@@ -174,7 +232,10 @@ def cmd_ask(
             "cost_usd": cost if exit_c == 0 else None,
         }
     )
-    print(f"\n(session {sess.id}; {len(sess.messages)} messages total)", file=sys.stderr)
+    print(
+        f"\n(session {sess.keyword}\t{sess.id}; {len(sess.messages)} messages total)",
+        file=sys.stderr,
+    )
     return exit_c
 
 
@@ -185,15 +246,35 @@ def cmd_providers() -> int:
     return 0
 
 
+def cmd_sessions_route(ns: argparse.Namespace) -> int:
+    if getattr(ns, "sessions_cmd", None) is None:
+        from tlm.sessions_tui import run_sessions_tui
+
+        return run_sessions_tui()
+    return cmd_sessions_dispatch(ns)
+
+
 def cmd_sessions_dispatch(ns: argparse.Namespace) -> int:
     cmd = ns.sessions_cmd
     if cmd == "list":
         for s in list_sessions():
-            print(f"{s.id}\t{s.updated}\t{s.title}")
+            print(f"{s.id}\t{s.keyword}\t{s.updated}\t{s.title}")
         return 0
     sid = getattr(ns, "session_id", None)
+    if cmd == "resume":
+        spec = getattr(ns, "session_spec", None) or sid
+        if not spec:
+            print("usage: tlm sessions resume SPEC", file=sys.stderr)
+            return 2
+        s = resolve_session(str(spec))
+        if s is None:
+            print("unknown session", file=sys.stderr)
+            return 2
+        write_last_session_id(s.id)
+        print(f"active\t{s.keyword}\t{s.id}")
+        return 0
     if cmd == "show":
-        s = load_session(str(sid)) if sid else None
+        s = resolve_session(str(sid)) if sid else None
         if s is None:
             print("unknown session", file=sys.stderr)
             return 2
@@ -202,7 +283,8 @@ def cmd_sessions_dispatch(ns: argparse.Namespace) -> int:
         print(_json.dumps(s.to_json(), indent=2))
         return 0
     if cmd == "delete":
-        ok = delete_session(str(sid)) if sid else False
+        s = resolve_session(str(sid)) if sid else None
+        ok = delete_session(s.id) if s else False
         if not ok:
             print("unknown session", file=sys.stderr)
             return 2
@@ -210,12 +292,101 @@ def cmd_sessions_dispatch(ns: argparse.Namespace) -> int:
         return 0
     if cmd == "rename":
         title = getattr(ns, "title", "")
-        if not sid or not rename_session(str(sid), str(title)):
+        s = resolve_session(str(sid)) if sid else None
+        if not s or not rename_session(s.id, str(title)):
             print("unknown session", file=sys.stderr)
             return 2
         print("renamed.")
         return 0
     return 2
+
+
+def cmd_new_ns(ns: argparse.Namespace) -> int:
+    from tlm.session import normalize_keyword
+
+    kw = (getattr(ns, "keyword", None) or "").strip()
+    if not kw:
+        try:
+            kw = input("Name for this session (one word): ").strip()
+        except EOFError:
+            print("error: need a name (non-interactive stdin)", file=sys.stderr)
+            return 2
+    try:
+        normalize_keyword(kw)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    sess = new_session(keyword=kw)
+    save_session(sess)
+    write_last_session_id(sess.id)
+    print(f"{sess.keyword}\t{sess.id}")
+    return 0
+
+
+def cmd_harvest_ns(ns: argparse.Namespace) -> int:
+    settings = load_settings()
+    try:
+        prov = get_provider(ns.provider, settings=settings)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    from tlm.harvest import apply_harvest_items, extract_harvest_items
+
+    targets: list[Session] = []
+    if ns.harvest_all:
+        targets = list_sessions()
+    elif ns.spec:
+        s = resolve_session(ns.spec)
+        if s:
+            targets.append(s)
+    elif ns.session:
+        s = resolve_session(ns.session)
+        if s:
+            targets.append(s)
+    elif ns.last:
+        lid = read_last_session_id()
+        if lid:
+            s = load_session(lid)
+            if s:
+                targets.append(s)
+    else:
+        lid = read_last_session_id()
+        if lid:
+            s = load_session(lid)
+            if s:
+                targets.append(s)
+
+    if not targets:
+        print("error: no session to harvest", file=sys.stderr)
+        return 2
+
+    for sess in targets:
+        items = extract_harvest_items(prov, sess)
+        if ns.dry_run:
+            for it in items:
+                print(it)
+            continue
+        accepted: list[str] = []
+        for it in items:
+            if not ns.yes:
+                try:
+                    c = input(f"Store long-term? [y/N] {it[:120]}: ").strip().lower()
+                except EOFError:
+                    return 1
+                if c not in ("y", "yes"):
+                    continue
+            accepted.append(it)
+        if accepted:
+            apply_harvest_items(
+                accepted,
+                source_session=sess.id,
+                settings=settings,
+                push_ready_summary=True,
+            )
+        sess.last_harvested_at = datetime.now(timezone.utc).isoformat()
+        sess.message_count_at_last_harvest = len(sess.messages)
+        save_session(sess)
+    return 0
 
 
 def cmd_usage(ns: argparse.Namespace) -> int:
@@ -351,11 +522,28 @@ def build_parser() -> argparse.ArgumentParser:
     cfg_sub.add_parser("gui", help="Open window UI (TLM_GUI selects Tk vs FLTK).")
     p_cfg.set_defaults(_handler=cmd_config_route)
 
-    p_q = sub.add_parser("ask", help="Ask the model (equivalent to `tlm ? …`).")
-    p_q.add_argument("--session", metavar="ID", default=None)
+    p_q = sub.add_parser(
+        "ask",
+        help="Ask the model (equivalent to `tlm ? …`). Reuses last session by default; use --new for a fresh chat.",
+    )
+    p_q.add_argument("--session", metavar="SPEC", default=None, help="Keyword or session id")
     p_q.add_argument("--provider", metavar="ID", default=None)
-    p_q.add_argument("--new", action="store_true")
-    p_q.add_argument("--last", action="store_true")
+    p_q.add_argument("--new", action="store_true", help="Start a new session (prompts for one-word name if needed)")
+    p_q.add_argument(
+        "--keyword",
+        metavar="WORD",
+        dest="ask_keyword",
+        default=None,
+        help="With --new: one-word session name",
+    )
+    p_q.add_argument("--last", action="store_true", help="Continue last session (default behavior)")
+    p_q.add_argument(
+        "--clear-context",
+        "--fresh",
+        action="store_true",
+        dest="clear_context",
+        help="Do not inject ready memory for this question",
+    )
     p_q.add_argument("--budget", type=int, default=8000, help="Trim context to ~this many heuristic tokens")
     p_q.add_argument(
         "--no-tools",
@@ -366,12 +554,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_q.set_defaults(
         _handler=lambda a: cmd_ask(
             " ".join(a.text).strip(),
-            session_id=a.session,
+            session_spec=a.session,
             provider=a.provider,
             new=a.new,
             last=a.last,
             budget=a.budget,
             tools=not a.no_tools,
+            clear_context=bool(a.clear_context),
+            new_keyword=a.ask_keyword,
         )
     )
 
@@ -407,19 +597,48 @@ def build_parser() -> argparse.ArgumentParser:
     p_comp.add_argument("shell", choices=["bash", "zsh", "fish"])
     p_comp.set_defaults(_handler=cmd_completion)
 
-    p_sess = sub.add_parser("sessions", help="List/show/delete/rename sessions.")
-    sp = p_sess.add_subparsers(dest="sessions_cmd", required=True)
+    p_sess = sub.add_parser(
+        "sessions",
+        help="Interactive TUI with no subcommand, or list/show/delete/rename/resume.",
+    )
+    sp = p_sess.add_subparsers(dest="sessions_cmd", required=False)
     sp.add_parser("list").set_defaults(_handler=cmd_sessions_dispatch)
+    p_resume = sp.add_parser("resume", help="Set active session (keyword or id).")
+    p_resume.add_argument("session_spec", metavar="SPEC")
+    p_resume.set_defaults(_handler=cmd_sessions_dispatch)
     p_show = sp.add_parser("show")
-    p_show.add_argument("session_id")
+    p_show.add_argument("session_id", metavar="SPEC")
     p_show.set_defaults(_handler=cmd_sessions_dispatch)
     p_del = sp.add_parser("delete")
-    p_del.add_argument("session_id")
+    p_del.add_argument("session_id", metavar="SPEC")
     p_del.set_defaults(_handler=cmd_sessions_dispatch)
     p_ren = sp.add_parser("rename")
-    p_ren.add_argument("session_id")
+    p_ren.add_argument("session_id", metavar="SPEC")
     p_ren.add_argument("title")
     p_ren.set_defaults(_handler=cmd_sessions_dispatch)
+    p_sess.set_defaults(_handler=cmd_sessions_route, sessions_cmd=None)
+
+    p_new = sub.add_parser("new", help="Create a new session (one-word name); becomes active.")
+    p_new.add_argument("keyword", nargs="?", default=None, help="Session keyword (prompted if omitted)")
+    p_new.set_defaults(_handler=cmd_new_ns)
+
+    p_harv = sub.add_parser(
+        "harvest",
+        help="Extract durable facts from session(s) into long-term memory.",
+    )
+    p_harv.add_argument(
+        "spec",
+        nargs="?",
+        default=None,
+        help="Session keyword or id (default: last active)",
+    )
+    p_harv.add_argument("--session", metavar="SPEC", default=None)
+    p_harv.add_argument("--last", action="store_true", help="Use last active session")
+    p_harv.add_argument("--all", action="store_true", dest="harvest_all", help="Every session")
+    p_harv.add_argument("--yes", action="store_true", help="Store all safe items without prompting")
+    p_harv.add_argument("--dry-run", action="store_true", help="Print model-extracted lines only")
+    p_harv.add_argument("--provider", default=None)
+    p_harv.set_defaults(_handler=cmd_harvest_ns)
 
     return p
 
@@ -458,24 +677,28 @@ def main(argv: list[str] | None = None) -> int:
     if argv[0] not in KNOWN_SUBCOMMANDS and not argv[0].startswith("-"):
         return cmd_ask(
             " ".join(argv).strip(),
-            session_id=None,
+            session_spec=None,
             provider=None,
             new=False,
             last=False,
             budget=8000,
             tools=True,
+            clear_context=False,
+            new_keyword=None,
         )
 
     if argv[0] == "?":
         opts, text = parse_ask_tokens(argv[1:])
         return cmd_ask(
             text,
-            session_id=opts["session"],
+            session_spec=opts["session"],
             provider=opts["provider"],
             new=opts["new"],
             last=opts["last"],
             budget=int(opts["budget"]),
             tools=opts.get("tools", True),
+            clear_context=bool(opts.get("clear_context", False)),
+            new_keyword=opts.get("keyword"),
         )
 
     args = parser.parse_args(argv)

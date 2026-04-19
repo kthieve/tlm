@@ -8,7 +8,7 @@ from tlm.session import (
 
 
 def test_trim_session_drops_from_front() -> None:
-    s = new_session()
+    s = new_session(keyword="test-trim")
     for i in range(20):
         append_user(s, "x" * 200)
     trim_session_to_budget(s, max_tokens=50)

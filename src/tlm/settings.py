@@ -32,6 +32,10 @@ class UserSettings:
     timeout: float = 120.0
     safety_profile: str = "standard"
     api_keys: dict[str, str] = field(default_factory=dict)
+    memory_enabled: bool = True
+    memory_ready_budget_chars: int = 800
+    memory_auto_harvest_threshold_messages: int = 30
+    memory_harvest_on_switch: bool = True
 
 
 def _toml_escape_str(s: str) -> str:
@@ -48,6 +52,10 @@ def save_settings(s: UserSettings) -> None:
     lines.append(f"temperature = {float(s.temperature)}")
     lines.append(f"timeout = {float(s.timeout)}")
     lines.append(f"safety_profile = {_toml_escape_str(s.safety_profile)}")
+    lines.append(f"memory_enabled = {str(bool(s.memory_enabled)).lower()}")
+    lines.append(f"memory_ready_budget_chars = {int(s.memory_ready_budget_chars)}")
+    lines.append(f"memory_auto_harvest_threshold_messages = {int(s.memory_auto_harvest_threshold_messages)}")
+    lines.append(f"memory_harvest_on_switch = {str(bool(s.memory_harvest_on_switch)).lower()}")
     if s.models:
         lines.append("")
         lines.append("[models]")
@@ -79,6 +87,12 @@ def load_settings() -> UserSettings:
         models = {}
     if not isinstance(keys, dict):
         keys = {}
+    def _bool(key: str, default: bool) -> bool:
+        v = data.get(key)
+        if v is None:
+            return default
+        return bool(v)
+
     return UserSettings(
         provider=data.get("provider") if isinstance(data.get("provider"), str) else None,
         model=data.get("model") if isinstance(data.get("model"), str) else None,
@@ -87,6 +101,10 @@ def load_settings() -> UserSettings:
         timeout=float(data.get("timeout", 120.0)),
         safety_profile=str(data.get("safety_profile", "standard")),
         api_keys={str(k): str(v) for k, v in keys.items() if isinstance(v, str)},
+        memory_enabled=_bool("memory_enabled", True),
+        memory_ready_budget_chars=int(data.get("memory_ready_budget_chars", 800)),
+        memory_auto_harvest_threshold_messages=int(data.get("memory_auto_harvest_threshold_messages", 30)),
+        memory_harvest_on_switch=_bool("memory_harvest_on_switch", True),
     )
 
 
