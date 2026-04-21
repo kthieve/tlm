@@ -7,8 +7,9 @@ from urllib.parse import quote_plus, urlparse
 
 from tlm.settings import UserSettings
 
-# DuckDuckGo lite HTML (best-effort; markup may change).
+# Search pages fetched via Lightpanda (best-effort; markup may change).
 DDG_LITE_SEARCH = "https://lite.duckduckgo.com/lite/?q="
+BRAVE_SEARCH = "https://search.brave.com/search?q="
 
 
 def resolve_binary(settings: UserSettings) -> str | None:
@@ -40,7 +41,19 @@ def validate_url(url: str, *, allow_http: bool) -> tuple[bool, str]:
     return False, "http not allowed (web_allow_http=false); use https"
 
 
-def search_url_for_query(q: str) -> str:
+def normalize_search_provider(provider: str | None) -> str:
+    raw = (provider or "").strip().lower()
+    if raw in ("duckduckgo", "ddg", "duck"):
+        return "duckduckgo"
+    if raw in ("brave", "brave-search"):
+        return "brave"
+    return "duckduckgo"
+
+
+def search_url_for_query(q: str, *, provider: str = "duckduckgo") -> str:
+    p = normalize_search_provider(provider)
+    if p == "brave":
+        return BRAVE_SEARCH + quote_plus(q.strip())
     return DDG_LITE_SEARCH + quote_plus(q.strip())
 
 

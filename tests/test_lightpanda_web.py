@@ -1,9 +1,19 @@
-"""Lightpanda URL helpers and ```tlm-web``` parsing."""
+"""Lightpanda URL helpers, Brave API formatting, and ```tlm-web``` parsing."""
 
 from __future__ import annotations
 
-from tlm.ask_tools import split_reply_tools
-from tlm.web.lightpanda import build_fetch_argv, search_url_for_query, validate_url
+import json
+from unittest.mock import patch
+
+from tlm.ask_tools import _run_web_ops_interactive, split_reply_tools
+from tlm.settings import UserSettings
+from tlm.web.brave_search_api import brave_web_search, format_brave_web_results
+from tlm.web.lightpanda import (
+    build_fetch_argv,
+    normalize_search_provider,
+    search_url_for_query,
+    validate_url,
+)
 
 
 def test_validate_url_https() -> None:
@@ -34,9 +44,27 @@ def test_validate_url_empty() -> None:
 
 
 def test_search_url_encodes_query() -> None:
-    u = search_url_for_query("a b & c")
+    u = search_url_for_query("a b & c", provider="duckduckgo")
     assert "a+b" in u or "%20" in u
     assert "lite.duckduckgo.com" in u
+
+
+def test_search_url_brave_provider() -> None:
+    u = search_url_for_query("a b", provider="brave")
+    assert "search.brave.com" in u
+    assert "q=a+b" in u or "q=a%20b" in u
+
+
+def test_normalize_search_provider_aliases() -> None:
+    assert normalize_search_provider("ddg") == "duckduckgo"
+    assert normalize_search_provider("duck") == "duckduckgo"
+    assert normalize_search_provider("brave-search") == "brave"
+    assert normalize_search_provider("unknown") == "duckduckgo"
+
+
+def test_user_settings_default_search_provider() -> None:
+    s = UserSettings()
+    assert s.web_search_provider == "duckduckgo"
 
 
 def test_build_fetch_argv_order() -> None:
@@ -87,3 +115,92 @@ def test_split_invalid_web_keeps_block() -> None:
     v, _, _, webs = split_reply_tools(text)
     assert webs == []
     assert "not json" in v
+
+
+def test_split_reply_tools_web_json_array() -> None:
+    text = (
+        "```tlm-web\n"
+        '[\n  {"op": "fetch", "url": "https://a.example"},\n'
+        '  {"op": "search", "q": "q1"}\n]\n'
+        "```\n"
+    )
+    v, _, _, webs = split_reply_tools(text)
+    assert len(webs) == 2
+    assert webs[0].get("op") == "fetch"
+    assert webs[1].get("op") == "search"
+    assert "tlm-web" not in v
+
+
+def test_web_ops_batch_confirm_once_then_reuse_session(monkeypatch) -> None:
+    confirms: list[str] = []
+
+    def fake_confirm(*, question: str, **kwargs: object) -> bool:
+        confirms.append(question)
+        return True
+
+    monkeypatch.setattr("tlm.ask_tools._confirm_web", fake_confirm)
+    monkeypatch.setattr("tlm.ask_tools._run_argv", lambda *a, **k: (0, "ok"))
+
+    s = UserSettings(web_enabled=True, web_search_provider="duckduckgo")
+    session: set[str] = set()
+    ops = [
+        {"op": "fetch", "url": "https://example.com/a"},
+        {"op": "fetch", "url": "https://example.com/b"},
+    ]
+    _run_web_ops_interactive(
+        ops,
+        settings=s,
+        bin_path="/bin/lightpanda",
+        timeout=5.0,
+        pcon=None,
+        RichPanel=None,
+        RichConfirm=None,
+        use_rich=False,
+        session_approved=session,
+    )
+    assert len(confirms) == 1
+    assert "Approve all 2" in confirms[0]
+
+    confirms.clear()
+    _run_web_ops_interactive(
+        ops,
+        settings=s,
+        bin_path="/bin/lightpanda",
+        timeout=5.0,
+        pcon=None,
+        RichPanel=None,
+        RichConfirm=None,
+        use_rich=False,
+        session_approved=session,
+    )
+    assert confirms == []
+
+
+def test_format_brave_web_results_basic() -> None:
+    out = format_brave_web_results(
+        {"web": {"results": [{"title": "T1", "url": "https://a.test", "description": "D1"}]}}
+    )
+    assert "T1" in out and "https://a.test" in out and "D1" in out
+
+
+def test_format_brave_web_results_empty() -> None:
+    assert "empty" in format_brave_web_results({"web": {"results": []}}).lower()
+
+
+def test_brave_web_search_parses_json() -> None:
+    payload = {"web": {"results": [{"title": "Hi", "url": "https://z", "description": ""}]}}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return json.dumps(payload).encode()
+
+    with patch("tlm.web.brave_search_api.urlopen", return_value=_Resp()):
+        code, body = brave_web_search("q", "secret-key", timeout=5.0)
+    assert code == 0
+    assert "Hi" in body and "https://z" in body

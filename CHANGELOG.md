@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0.dev5] - 2026-04-21
+
+### Added
+
+- **Web / Lightpanda** settings tab in **Tk** and **FLTK** GUIs: enable web, `lightpanda_path`, optional **auto-check** against GitHub on tab open, status text, **download/update** binary to `~/.local/share/tlm/bin/lightpanda`, open releases page.
+- **`tlm config`** TUI **`w`**: same options plus GitHub status refresh and download.
+
+## [0.2.0.dev4] - 2026-04-21
+
+### Added
+
+- **web_enabled** in **`tlm init --wizard`**, **`tlm config`** TUI (`w`), and config **GUI** (Tk + FLTK Keys tab): optional `lightpanda_path`, short Lightpanda hint in the terminal wizard.
+
+## [0.2.0.dev3] - 2026-04-21
+
+### Added
+
+- **`tlm web`** subcommand (same flags as `tlm ask`) — sets **web_focus** so the model is nudged to use ```tlm-web```; system prompt explains missing `web_enabled` / Lightpanda instead of a generic “no live web” reply.
+
+## [0.2.0.dev2] - 2026-04-21
+
+### Changed
+
+- Ask mode: **`tlm-web` search and fetch use Lightpanda only**; prompts instruct the model to rely on `tlm-web` for web search/pages (no HTTP search API path in the ask loop).
+
+## [0.2.0b4] - 2026-04-21
+
+### Changed
+
+- Ask web tools: model guidance prefers **Lightpanda** (`tlm-web`) for heavy search/browse, optional **Brave Search API** fallback when `brave-search` / `TLM_BRAVE_SEARCH_API_KEY` is set (after a failed Lightpanda search, or search-only when Lightpanda is missing); simple one-off GETs may use **`tlm-exec` + curl**.
+
+[0.2.0b4]: https://github.com/example/tlm/releases/tag/v0.2.0b4
+
 ## [0.2.0b2] - 2026-04-19
 
 ### Added

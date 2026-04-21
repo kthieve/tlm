@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import webbrowser
 from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
@@ -21,6 +23,7 @@ from tlm.memory import (
     save_ready,
 )
 from tlm.providers.registry import REAL_PROVIDER_IDS, get_provider
+from tlm.self_update import format_version_update_status
 from tlm.safety.permissions import load_permissions_file, permissions_file_path, save_permissions_file
 from tlm.safety.profiles import SafetyProfile, normalize_profile
 from tlm.session import (
@@ -31,6 +34,14 @@ from tlm.session import (
     write_last_session_id,
 )
 from tlm.settings import load_settings, save_settings
+from tlm.web.lightpanda_release import (
+    RELEASES_PAGE,
+    compare_status,
+    describe_local_install,
+    fetch_latest_release,
+    install_latest_to_data_dir,
+    preferred_asset_basename,
+)
 from tlm.telemetry import requests_log_path, summarize_usage
 from tlm.telemetry.log import scrub_text_line
 
@@ -122,8 +133,8 @@ def run_gui() -> None:
     tab_keys.columnconfigure(0, weight=1)
 
     lf_keys = ttk.LabelFrame(tab_keys, text="Provider & API key", padding=(12, 10))
-    lf_keys.grid(row=0, column=0, sticky="nsew")
-    tab_keys.rowconfigure(0, weight=1)
+    lf_keys.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+    tab_keys.rowconfigure(0, weight=0)
 
     settings = load_settings()
     prov_var = tk.StringVar(value=settings.provider or "openrouter")
@@ -174,6 +185,245 @@ def run_gui() -> None:
     ttk.Button(bf, text="Save", command=save_keys, style="Accent.TButton").pack(side=tk.RIGHT, padx=(6, 0))
     ttk.Button(bf, text="Test connection", command=test_keys).pack(side=tk.RIGHT)
     load_key_for_provider()
+
+    # --- Web / Lightpanda ---
+    tab_web = ttk.Frame(nb, padding=12)
+    nb.add(tab_web, text="Web / Lightpanda")
+    tab_web.columnconfigure(0, weight=1)
+    tab_web.rowconfigure(1, weight=1)
+
+    ws = load_settings()
+    web_en_var = tk.BooleanVar(value=bool(ws.web_enabled))
+    lp_path_var = tk.StringVar(value=ws.lightpanda_path or "")
+    web_auto_check_var = tk.BooleanVar(value=bool(ws.web_check_lightpanda_updates))
+
+    lf_web = ttk.LabelFrame(tab_web, text="Ask mode — `tlm-web` / `tlm web`", padding=(12, 10))
+    lf_web.grid(row=0, column=0, sticky="ew")
+    lf_web.columnconfigure(1, weight=1)
+    ttk.Checkbutton(
+        lf_web,
+        text="web_enabled (allow Lightpanda fetches in ask mode)",
+        variable=web_en_var,
+    ).grid(row=0, column=0, columnspan=3, sticky="w")
+    ttk.Label(lf_web, text="lightpanda_path").grid(row=1, column=0, sticky="w", pady=(10, 0))
+    ttk.Entry(lf_web, textvariable=lp_path_var, width=52).grid(row=1, column=1, sticky="we", pady=(10, 0))
+
+    def browse_lightpanda() -> None:
+        p = filedialog.askopenfilename(title="Select lightpanda binary")
+        if p:
+            lp_path_var.set(p)
+
+    ttk.Button(lf_web, text="Browse…", command=browse_lightpanda).grid(
+        row=1, column=2, sticky="w", padx=(8, 0), pady=(10, 0)
+    )
+    ttk.Checkbutton(
+        lf_web,
+        text="Auto-check GitHub release when opening this tab",
+        variable=web_auto_check_var,
+    ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
+
+    lf_status = ttk.LabelFrame(tab_web, text="Status & updates (GitHub)", padding=(12, 10))
+    lf_status.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+    lf_status.columnconfigure(0, weight=1)
+    lf_status.rowconfigure(0, weight=1)
+    lp_status = scrolledtext.ScrolledText(
+        lf_status, wrap=tk.WORD, font=mono, height=10, relief=tk.FLAT, padx=8, pady=8
+    )
+    lp_status.grid(row=0, column=0, sticky="nsew")
+
+    def save_web_settings() -> None:
+        s = load_settings()
+        s.web_enabled = bool(web_en_var.get())
+        lp_p = lp_path_var.get().strip()
+        s.lightpanda_path = lp_p if lp_p else None
+        s.web_check_lightpanda_updates = bool(web_auto_check_var.get())
+        save_settings(s)
+        messagebox.showinfo("tlm", "Saved web settings to config.toml.")
+
+    def refresh_lp_status() -> None:
+        s = load_settings()
+        s.web_enabled = bool(web_en_var.get())
+        s.lightpanda_path = lp_path_var.get().strip() or None
+        lines = [describe_local_install(s), ""]
+        want = preferred_asset_basename()
+        if not want:
+            lines.append(
+                f"This OS/arch has no mapped GitHub asset (got {want or 'unknown'}). Open releases to pick a build."
+            )
+        else:
+            ok, data = fetch_latest_release(timeout=15.0)
+            if ok and isinstance(data, dict):
+                lines.append(compare_status(s, data))
+            else:
+                lines.append(f"Could not reach GitHub: {data}")
+        lp_status.delete("1.0", tk.END)
+        lp_status.insert(tk.END, "\n".join(lines))
+
+    def download_lightpanda_gui() -> None:
+        if not messagebox.askyesno(
+            "tlm",
+            "Download the latest Lightpanda binary for this OS from GitHub into your tlm data directory "
+            "and set lightpanda_path? (~/.local/share/tlm/bin/lightpanda)",
+        ):
+            return
+
+        def _fmt_bytes(n: int) -> str:
+            if n < 1024:
+                return f"{n} B"
+            if n < 1024 * 1024:
+                return f"{n / 1024:.1f} KiB"
+            return f"{n / (1024 * 1024):.1f} MiB"
+
+        dlg = tk.Toplevel(root)
+        dlg.title("Downloading Lightpanda")
+        dlg.transient(root)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        cancel_ev = threading.Event()
+        fr = ttk.Frame(dlg, padding=20)
+        fr.pack(fill=tk.BOTH, expand=True)
+        lbl_prog = ttk.Label(fr, text="Starting…", justify=tk.CENTER)
+        lbl_prog.pack(pady=(0, 8))
+        pb = ttk.Progressbar(fr, mode="indeterminate", length=320)
+        pb.pack(pady=(0, 8))
+        pb.start(14)
+        btn_fr = ttk.Frame(fr)
+        btn_fr.pack(fill=tk.X)
+        ttk.Label(
+            btn_fr,
+            text="Partial downloads resume next time. Cancel keeps the .partial file.",
+            font=("TkDefaultFont", 8),
+            foreground="#555",
+        ).pack(anchor="w", pady=(0, 6))
+
+        outcome: list[tuple[bool, str, Path | None] | BaseException] = []
+
+        def apply_progress(n: int, total: int | None) -> None:
+            lbl_prog.configure(text=f"{_fmt_bytes(n)} / {_fmt_bytes(total) if total else '…'}")
+            if total and total > 0:
+                pb.stop()
+                pb.configure(mode="determinate", maximum=100.0, value=min(100.0, 100.0 * n / total))
+            else:
+                if pb.cget("mode") == "determinate":
+                    pb.configure(mode="indeterminate")
+                    pb.start(14)
+
+        def schedule_progress(n: int, total: int | None) -> None:
+            root.after(0, lambda: apply_progress(n, total))
+
+        def worker() -> None:
+            try:
+                s = load_settings()
+                s.web_enabled = bool(web_en_var.get())
+                s.lightpanda_path = lp_path_var.get().strip() or None
+                outcome.append(
+                    install_latest_to_data_dir(
+                        s,
+                        timeout=600.0,
+                        cancel_event=cancel_ev,
+                        progress=schedule_progress,
+                    )
+                )
+            except BaseException as e:  # noqa: BLE001 — surface any failure in GUI
+                outcome.append(e)
+
+        def do_cancel() -> None:
+            cancel_ev.set()
+            lbl_prog.configure(text="Cancelling…")
+
+        ttk.Button(btn_fr, text="Cancel", command=do_cancel).pack(side=tk.RIGHT)
+
+        def on_close() -> None:
+            do_cancel()
+
+        dlg.protocol("WM_DELETE_WINDOW", on_close)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        def finish() -> None:
+            pb.stop()
+            dlg.grab_release()
+            dlg.destroy()
+            if not outcome:
+                messagebox.showerror("tlm", "Download finished with no result (unexpected).")
+                return
+            raw = outcome[0]
+            if isinstance(raw, BaseException):
+                messagebox.showerror("tlm", f"Download failed: {raw}")
+                return
+            ok, msg, dest = raw
+            if ok and dest:
+                lp_path_var.set(str(dest))
+                save_web_settings()
+                messagebox.showinfo("tlm", msg)
+                refresh_lp_status()
+            elif "cancelled" in msg.lower():
+                messagebox.showwarning("tlm", msg)
+            else:
+                messagebox.showerror("tlm", msg)
+
+        def poll() -> None:
+            if outcome:
+                finish()
+            else:
+                dlg.update_idletasks()
+                dlg.after(80, poll)
+
+        dlg.after(80, poll)
+
+    wf = ttk.Frame(tab_web)
+    wf.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+    ttk.Button(wf, text="Save web settings", command=save_web_settings, style="Accent.TButton").pack(
+        side=tk.LEFT, padx=(0, 8)
+    )
+    ttk.Button(wf, text="Refresh status", command=refresh_lp_status).pack(side=tk.LEFT, padx=(0, 8))
+    ttk.Button(wf, text="Download / update binary", command=download_lightpanda_gui).pack(
+        side=tk.LEFT, padx=(0, 8)
+    )
+    ttk.Button(wf, text="Open releases page", command=lambda: webbrowser.open(RELEASES_PAGE)).pack(
+        side=tk.LEFT
+    )
+
+    def on_notebook_tab_change(_e: object) -> None:
+        try:
+            tab_id = nb.select()
+            label = nb.tab(tab_id, "text")
+        except tk.TclError:
+            return
+        if label == "Web / Lightpanda" and web_auto_check_var.get():
+            root.after(100, refresh_lp_status)
+        if label == "About":
+            root.after(50, lambda: refresh_about(online=False))
+
+    nb.bind("<<NotebookTabChanged>>", on_notebook_tab_change)
+
+    # --- About (version / tlm GitHub update status) ---
+    tab_about = ttk.Frame(nb, padding=12)
+    nb.add(tab_about, text="About")
+    tab_about.columnconfigure(0, weight=1)
+    ttk.Label(
+        tab_about,
+        text="Installed version, install kind, and optional check for a newer GitHub release (same logic as `tlm update`).",
+    ).grid(row=0, column=0, sticky="w")
+    about_body = scrolledtext.ScrolledText(tab_about, height=14, wrap=tk.WORD, font=mono)
+    about_body.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+    tab_about.rowconfigure(1, weight=1)
+
+    def refresh_about(*, online: bool = False) -> None:
+        txt = format_version_update_status(load_settings(), query_github=online)
+        about_body.configure(state=tk.NORMAL)
+        about_body.delete("1.0", tk.END)
+        about_body.insert(tk.END, txt)
+        about_body.configure(state=tk.DISABLED)
+
+    ab_fr = ttk.Frame(tab_about)
+    ab_fr.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+    ttk.Button(
+        ab_fr,
+        text="Refresh (query GitHub for latest release tag)",
+        command=lambda: refresh_about(online=True),
+    ).pack(side=tk.LEFT)
+    refresh_about(online=False)
 
     # --- Sessions ---
     tab_sess = ttk.Frame(nb, padding=12)

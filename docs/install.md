@@ -33,6 +33,16 @@ pip install -e .
 
 Replace `OWNER` with the real GitHub org or user. For one-off installs without cloning, use the GitHub URL method below.
 
+### Update your install from this clone
+
+After `git pull`, refresh the `tlm` on your PATH (pipx, `~/.local/share/tlm-venv`, or `./.venv`) with an **editable** reinstall from the repo root:
+
+```bash
+bash scripts/update-from-clone.sh
+```
+
+Use `--no-pull` to reinstall from the tree as-is without fetching. The script runs `git pull --ff-only` by default when `.git` exists.
+
 ## From GitHub (`pip` / `pipx`, no PyPI)
 
 Use a **tag** (e.g. `v0.2.0b2`). Set the repo to match yours:

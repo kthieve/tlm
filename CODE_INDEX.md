@@ -32,6 +32,7 @@
 | `src/tlm/safety/root_guard.py` | Root / elevation guard |
 | `src/tlm/safety/sandbox.py` | Optional `bwrap` / `firejail` argv wrapper |
 | `scripts/install.sh` | pipx / venv install from `git+https` (`TLM_GITHUB_REPO`) |
+| `scripts/update-from-clone.sh` | `git pull` + editable reinstall into pipx / `tlm-venv` / `.venv` |
 | `packaging/build_zipapp.sh` | Shiv zipapp → `dist/tlm.pyz` |
 | `packaging/linux/deb/`, `packaging/linux/aur/` | Linux packaging scaffolding |
 | `packaging/macos/homebrew/`, `packaging/windows/*` | Placeholders for 0.3.0 |

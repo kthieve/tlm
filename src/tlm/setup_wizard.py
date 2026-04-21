@@ -57,6 +57,27 @@ def _eof() -> None:
     print("\n(error: end of input; run `tlm init --wizard` with a TTY to finish setup.)", file=sys.stderr)
 
 
+def _provider_prompt_value(raw: str, all_ids: list[str]) -> str | None:
+    v = raw.strip()
+    if not v:
+        return None
+    if v.isdigit():
+        idx = int(v)
+        if 1 <= idx <= len(all_ids):
+            return all_ids[idx - 1]
+        return None
+    pid = normalize_provider_id(v)
+    if pid in all_ids:
+        return pid
+    return None
+
+
+def _print_provider_menu(all_ids: list[str], selected: str | None = None) -> None:
+    for i, pid in enumerate(all_ids, start=1):
+        marker = " (selected)" if selected == pid else ""
+        print(f"  {i}) {pid}{marker}")
+
+
 def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
     """
     Linear setup prompts. On success, saves settings and writes the setup marker.
@@ -76,33 +97,37 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
 
     try:
         cur = (s.provider or "openrouter").strip()
-        print(f"Providers: {', '.join(all_ids)}")
-        v = input(f"Provider [{cur}]: ").strip()
-        if v:
-            pid = normalize_provider_id(v)
-            if pid not in all_ids:
-                print(f"error: unknown provider {v!r}. Use one of: {', '.join(all_ids)}", file=sys.stderr)
-                return None, 2
-            s.provider = pid
-        else:
-            pid = normalize_provider_id(cur)
-            if pid not in all_ids:
-                pid = "openrouter"
-            s.provider = pid
+        default_pid = normalize_provider_id(cur)
+        if default_pid not in all_ids:
+            default_pid = "openrouter"
+        print("Providers (choose number or provider id):")
+        _print_provider_menu(all_ids, selected=default_pid)
+        v = input(f"Active provider [{default_pid}]: ").strip()
+        chosen = _provider_prompt_value(v, all_ids)
+        if v and chosen is None:
+            print("error: unknown provider selection. Use a menu number or provider id.", file=sys.stderr)
+            return None, 2
+        pid = chosen or default_pid
+        s.provider = pid
 
-        if merged_api_key(pid, s):
-            print("API key already set (environment or config); skipping key prompt.", flush=True)
-        elif pid == "stub":
-            print("Provider `stub` needs no API key.", flush=True)
-        else:
-            print(
-                f"Set an API key for {pid}, or leave empty to configure later "
-                f"(env: TLM_{pid.upper().replace('-', '_')}_API_KEY or `tlm config`).",
-                flush=True,
-            )
-            key = input("API key: ").strip()
+        print("\nAPI key setup (you can configure multiple providers).", flush=True)
+        print("Pick a provider number to add/update a key, or press Enter when done.", flush=True)
+        while True:
+            _print_provider_menu(all_ids, selected=s.provider)
+            raw_sel = input("Provider for API key [Enter to continue]: ").strip()
+            if not raw_sel:
+                break
+            key_pid = _provider_prompt_value(raw_sel, all_ids)
+            if key_pid is None:
+                print("Invalid selection. Use menu number or provider id.", flush=True)
+                continue
+            if key_pid == "stub":
+                print("Provider `stub` needs no API key.", flush=True)
+                continue
+            key = input(f"API key for {key_pid} (leave empty to skip): ").strip()
             if key:
-                s.api_keys[pid] = key
+                s.api_keys[key_pid] = key
+                print(f"Saved key for {key_pid}.", flush=True)
 
         suggested = DEFAULT_MODELS.get(pid, "gpt-4o-mini")
         dm = s.model or suggested
@@ -126,11 +151,43 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
         elif v6 in ("y", "yes", ""):
             s.memory_enabled = True
 
+        webdef = "y" if s.web_enabled else "n"
+        print(
+            "\nWeb in ask mode: model can use fenced `tlm-web` blocks (search/fetch) via the "
+            "**Lightpanda** browser CLI — install from https://github.com/lightpanda-io/browser",
+            flush=True,
+        )
+        v7 = input(f"Enable web tools (`web_enabled`)? [y/N] (current: {webdef}): ").strip().lower()
+        if v7 in ("y", "yes"):
+            s.web_enabled = True
+        elif v7 in ("n", "no"):
+            s.web_enabled = False
+        # Enter alone: leave s.web_enabled unchanged
+        if s.web_enabled:
+            cur_lp = (s.lightpanda_path or "").strip()
+            v_lp = input(
+                f"Path to `lightpanda` binary (Enter = search PATH; current [{cur_lp or 'PATH'}]): "
+            ).strip()
+            if v_lp:
+                s.lightpanda_path = v_lp
+            vac = input(
+                "In the config GUI, auto-check Lightpanda on GitHub when opening the Web tab? [y/N]: "
+            ).strip().lower()
+            if vac in ("y", "yes"):
+                s.web_check_lightpanda_updates = True
+            elif vac in ("n", "no"):
+                s.web_check_lightpanda_updates = False
+
         print("\n--- summary ---", flush=True)
         print(f"  provider:        {s.provider}", flush=True)
         print(f"  model:           {s.model or '(provider default)'}", flush=True)
         print(f"  safety_profile:  {s.safety_profile}", flush=True)
         print(f"  memory_enabled:  {s.memory_enabled}", flush=True)
+        print(f"  web_enabled:     {s.web_enabled}", flush=True)
+        if s.lightpanda_path:
+            print(f"  lightpanda_path: {s.lightpanda_path}", flush=True)
+        if s.web_enabled:
+            print(f"  web_check_lightpanda_updates: {s.web_check_lightpanda_updates}", flush=True)
         key_ok = bool(merged_api_key(normalize_provider_id((s.provider or "openrouter").strip()), s))
         print(f"  API key set:     {key_ok}", flush=True)
 

@@ -24,6 +24,14 @@ def config_file_path() -> Path:
     return config_dir() / "config.toml"
 
 
+def _clamp_ask_max_tool_rounds(raw: object) -> int:
+    try:
+        n = int(raw) if isinstance(raw, (int, float, str)) else 12
+    except (TypeError, ValueError):
+        n = 12
+    return max(2, min(32, n))
+
+
 @dataclass
 class UserSettings:
     provider: str | None = None
@@ -37,6 +45,8 @@ class UserSettings:
     memory_ready_budget_chars: int = 800
     memory_auto_harvest_threshold_messages: int = 30
     memory_harvest_on_switch: bool = True
+    # Max assistant↔tool feedback iterations per `tlm ask` (each web batch + model reply can consume one).
+    ask_max_tool_rounds: int = 12
     # Lightpanda-backed ask web tools (see tlm.web.lightpanda); off until user installs binary.
     web_enabled: bool = False
     lightpanda_path: str | None = None
@@ -45,6 +55,9 @@ class UserSettings:
     web_max_output_chars: int = 48_000
     web_disable_lightpanda_telemetry: bool = True
     web_allow_http: bool = False
+    web_search_provider: str = "duckduckgo"  # "duckduckgo" | "brave"
+    # When true, Web settings tab (GUI) may query GitHub for Lightpanda release info on open.
+    web_check_lightpanda_updates: bool = False
     # GitHub release hint (stderr); disable with TLM_NO_UPDATE_CHECK=1.
     check_for_updates: bool = False
     github_repo: str | None = None  # owner/repo when not in install metadata
@@ -68,6 +81,7 @@ def save_settings(s: UserSettings) -> None:
     lines.append(f"memory_ready_budget_chars = {int(s.memory_ready_budget_chars)}")
     lines.append(f"memory_auto_harvest_threshold_messages = {int(s.memory_auto_harvest_threshold_messages)}")
     lines.append(f"memory_harvest_on_switch = {str(bool(s.memory_harvest_on_switch)).lower()}")
+    lines.append(f"ask_max_tool_rounds = {_clamp_ask_max_tool_rounds(s.ask_max_tool_rounds)}")
     lines.append(f"web_enabled = {str(bool(s.web_enabled)).lower()}")
     if s.lightpanda_path is not None:
         lines.append(f"lightpanda_path = {_toml_escape_str(s.lightpanda_path)}")
@@ -78,6 +92,10 @@ def save_settings(s: UserSettings) -> None:
         f"web_disable_lightpanda_telemetry = {str(bool(s.web_disable_lightpanda_telemetry)).lower()}"
     )
     lines.append(f"web_allow_http = {str(bool(s.web_allow_http)).lower()}")
+    lines.append(f"web_search_provider = {_toml_escape_str(s.web_search_provider)}")
+    lines.append(
+        f"web_check_lightpanda_updates = {str(bool(s.web_check_lightpanda_updates)).lower()}"
+    )
     lines.append(f"check_for_updates = {str(bool(s.check_for_updates)).lower()}")
     if s.github_repo is not None:
         lines.append(f"github_repo = {_toml_escape_str(s.github_repo)}")
@@ -130,6 +148,7 @@ def load_settings() -> UserSettings:
         memory_ready_budget_chars=int(data.get("memory_ready_budget_chars", 800)),
         memory_auto_harvest_threshold_messages=int(data.get("memory_auto_harvest_threshold_messages", 30)),
         memory_harvest_on_switch=_bool("memory_harvest_on_switch", True),
+        ask_max_tool_rounds=_clamp_ask_max_tool_rounds(data.get("ask_max_tool_rounds", 12)),
         web_enabled=_bool("web_enabled", False),
         lightpanda_path=data.get("lightpanda_path") if isinstance(data.get("lightpanda_path"), str) else None,
         web_dump=str(data.get("web_dump", "markdown")),
@@ -137,6 +156,8 @@ def load_settings() -> UserSettings:
         web_max_output_chars=int(data.get("web_max_output_chars", 48_000)),
         web_disable_lightpanda_telemetry=_bool("web_disable_lightpanda_telemetry", True),
         web_allow_http=_bool("web_allow_http", False),
+        web_search_provider=str(data.get("web_search_provider", "duckduckgo")),
+        web_check_lightpanda_updates=_bool("web_check_lightpanda_updates", False),
         check_for_updates=_bool("check_for_updates", False),
         github_repo=data.get("github_repo") if isinstance(data.get("github_repo"), str) else None,
     )

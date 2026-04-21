@@ -73,6 +73,8 @@ def read_direct_url() -> dict[str, Any] | None:
         raw = dist.read_text("direct_url.json")
     except (FileNotFoundError, OSError, KeyError):
         return None
+    if not isinstance(raw, str) or not raw.strip():
+        return None
     try:
         out = json.loads(raw)
     except json.JSONDecodeError:
@@ -332,6 +334,57 @@ def save_notify_cache(c: UpdateNotifyCache) -> None:
         json.dumps({"last_check_epoch": c.last_check_epoch, "last_notified_tag": c.last_notified_tag}),
         encoding="utf-8",
     )
+
+
+def format_config_header_status(settings: UserSettings) -> str:
+    """One-line summary for TUI / headers (no network)."""
+    slug = resolve_github_slug(settings) or "(unset)"
+    notify = "on" if settings.check_for_updates else "off"
+    return f"v{__version__} · {infer_install_kind()} · repo {slug} · release notify {notify}"
+
+
+def format_version_update_status(
+    settings: UserSettings | None,
+    *,
+    query_github: bool = False,
+    timeout: float = GH_TIMEOUT,
+) -> str:
+    """Multi-line status for About dialogs and TUI (optional GitHub query for latest tag)."""
+    s = settings if settings is not None else UserSettings()
+    lines = [
+        f"tlm version: {__version__}",
+        f"Install: {infer_install_kind()}",
+    ]
+    slug = resolve_github_slug(s)
+    if slug:
+        lines.append(f"GitHub repo: {slug}")
+    else:
+        lines.append(
+            "GitHub repo: (not resolved — set `github_repo` in config.toml, `TLM_GITHUB_REPO`, "
+            "or install from a git+https://github.com/… URL)"
+        )
+    lines.append(
+        f"Notify on new releases: {bool(s.check_for_updates)} "
+        "(stderr hint; suppress with TLM_NO_UPDATE_CHECK=1)"
+    )
+    if not query_github:
+        lines.append("Latest release: (choose Refresh to query GitHub)")
+        return "\n".join(lines)
+    if not slug:
+        lines.append("Latest release: (skipped — no repo slug)")
+        return "\n".join(lines)
+    tag = fetch_latest_release_tag(slug, timeout=timeout)
+    if not tag:
+        lines.append("Latest release tag: (unavailable — network, API error, or no releases)")
+    elif version_a_gt_b(tag, __version__):
+        lines.append(
+            f"Update available: {tag} (installed {__version__}). In a terminal: `tlm update` or `tlm update --yes`"
+        )
+    else:
+        lines.append(
+            f"Latest published tag: {tag} — up to date or on a dev/local build (installed {__version__})."
+        )
+    return "\n".join(lines)
 
 
 def maybe_print_update_notice(settings: UserSettings, *, argv0: str | None = None) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from tlm.ask_tools import _build_system_prompt, split_reply_tools
 from tlm.memory import save_ready
 from tlm.session import Session
-from tlm.settings import UserSettings
+from tlm.settings import UserSettings, _clamp_ask_max_tool_rounds
 
 
 def test_split_reply_tools_mem_block() -> None:
@@ -55,6 +55,13 @@ def test_ready_memory_in_system_prompt(tmp_path, monkeypatch) -> None:
         ready_budget=800,
     )
     assert "Ready memory" not in sys_clear
+
+
+def test_clamp_ask_max_tool_rounds() -> None:
+    assert _clamp_ask_max_tool_rounds(6) == 6
+    assert _clamp_ask_max_tool_rounds(0) == 2
+    assert _clamp_ask_max_tool_rounds(100) == 32
+    assert _clamp_ask_max_tool_rounds("x") == 12
 
 
 def test_estimate_ask_session_with_keyword() -> None:

@@ -46,6 +46,7 @@ KNOWN_SUBCOMMANDS = frozenset(
         "?",
         "gui",
         "ask",
+        "web",
         "write",
         "do",
         "providers",
@@ -55,6 +56,7 @@ KNOWN_SUBCOMMANDS = frozenset(
         "init",
         "config",
         "new",
+        "clear",
         "harvest",
         "help",
         "paths",
@@ -166,6 +168,7 @@ def cmd_ask(
     web: bool = True,
     clear_context: bool = False,
     new_keyword: str | None = None,
+    web_focus: bool = False,
 ) -> int:
     blob = read_stdin_blob()
     text = merge_prompt(text, blob)
@@ -229,6 +232,7 @@ def cmd_ask(
         web=web,
         settings=settings,
         clear_context=clear_context,
+        web_focus=web_focus,
     )
     save_session(sess)
     write_last_session_id(sess.id)
@@ -326,11 +330,7 @@ def cmd_new_ns(ns: argparse.Namespace) -> int:
 
     kw = (getattr(ns, "keyword", None) or "").strip()
     if not kw:
-        try:
-            kw = input("Name for this session (one word): ").strip()
-        except EOFError:
-            print("error: need a name (non-interactive stdin)", file=sys.stderr)
-            return 2
+        return cmd_new_context()
     try:
         normalize_keyword(kw)
     except ValueError as e:
@@ -340,6 +340,16 @@ def cmd_new_ns(ns: argparse.Namespace) -> int:
     save_session(sess)
     write_last_session_id(sess.id)
     print(f"{sess.keyword}\t{sess.id}")
+    return 0
+
+
+def cmd_new_context() -> int:
+    """Start a fresh context by creating and activating a new session."""
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    sess = new_session(keyword=f"ctx{ts}")
+    save_session(sess)
+    write_last_session_id(sess.id)
+    print(f"new context\t{sess.keyword}\t{sess.id}")
     return 0
 
 
@@ -684,7 +694,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_q = sub.add_parser(
         "ask",
-        help="Ask the model (equivalent to `tlm ? …`). Reuses last session by default; use --new for a fresh chat.",
+        help="Ask the model (equivalent to `tlm ? …`). Use `tlm web …` for the same flags with web tools emphasized. Reuses last session by default; use --new for a fresh chat.",
     )
     p_q.add_argument("--session", metavar="SPEC", default=None, help="Keyword or session id")
     p_q.add_argument("--provider", metavar="ID", default=None)
@@ -728,6 +738,57 @@ def build_parser() -> argparse.ArgumentParser:
             web=not a.no_web,
             clear_context=bool(a.clear_context),
             new_keyword=a.ask_keyword,
+            web_focus=False,
+        )
+    )
+
+    p_web = sub.add_parser(
+        "web",
+        help="Ask with **web tools emphasized** (```tlm-web``` / Lightpanda). Same options as `tlm ask`.",
+    )
+    p_web.add_argument("--session", metavar="SPEC", default=None, help="Keyword or session id")
+    p_web.add_argument("--provider", metavar="ID", default=None)
+    p_web.add_argument("--new", action="store_true", help="Start a new session")
+    p_web.add_argument(
+        "--keyword",
+        metavar="WORD",
+        dest="ask_keyword",
+        default=None,
+        help="With --new: one-word session name",
+    )
+    p_web.add_argument("--last", action="store_true", help="Continue last session (default)")
+    p_web.add_argument(
+        "--clear-context",
+        "--fresh",
+        action="store_true",
+        dest="clear_context",
+        help="Do not inject ready memory for this question",
+    )
+    p_web.add_argument("--budget", type=int, default=8000, help="Trim context to ~this many heuristic tokens")
+    p_web.add_argument(
+        "--no-tools",
+        action="store_true",
+        help="Disable ```tlm-exec``` tool loop",
+    )
+    p_web.add_argument(
+        "--no-web",
+        action="store_true",
+        help="Disable ```tlm-web``` (unusual for this subcommand)",
+    )
+    p_web.add_argument("text", nargs="*", help="Question (live web via Lightpanda when configured)")
+    p_web.set_defaults(
+        _handler=lambda a: cmd_ask(
+            " ".join(a.text).strip(),
+            session_spec=a.session,
+            provider=a.provider,
+            new=a.new,
+            last=a.last,
+            budget=a.budget,
+            tools=not a.no_tools,
+            web=not a.no_web,
+            clear_context=bool(a.clear_context),
+            new_keyword=a.ask_keyword,
+            web_focus=True,
         )
     )
 
@@ -789,6 +850,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_new = sub.add_parser("new", help="Create a new session (one-word name); becomes active.")
     p_new.add_argument("keyword", nargs="?", default=None, help="Session keyword (prompted if omitted)")
     p_new.set_defaults(_handler=cmd_new_ns)
+
+    sub.add_parser("clear", help="Start a fresh conversation context (new active session).").set_defaults(
+        _handler=lambda _: cmd_new_context()
+    )
 
     p_harv = sub.add_parser(
         "harvest",
@@ -899,6 +964,7 @@ def main(argv: list[str] | None = None) -> int:
             web=True,
             clear_context=False,
             new_keyword=None,
+            web_focus=False,
         )
 
     if argv[0] == "?":
@@ -914,6 +980,7 @@ def main(argv: list[str] | None = None) -> int:
             web=opts.get("web", True),
             clear_context=bool(opts.get("clear_context", False)),
             new_keyword=opts.get("keyword"),
+            web_focus=False,
         )
 
     args = parser.parse_args(argv)

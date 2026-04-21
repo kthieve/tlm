@@ -1,10 +1,11 @@
 # Scheme: major.minor.fix with optional release segment (PEP 440).
-#   dev  — 0.1.0.dev0, 0.1.0.dev1, … (pre-release development)
-#   b    — 1.0.0b1, 1.0.0b2, … (beta)
+#   dev  — 0.1.0.dev0, 0.1.0.dev1, … (development builds; extension is .devN, not "b")
+#   b    — 1.0.0b1, 1.0.0b2, … (beta; extension is b1, b2, …)
 #   rc   — 1.0.0rc1, … (release candidate)
 #   post — 1.0.0.post1 (post-release / packaging hotfix; "p" in informal shorthand)
 #
-# Current release train: 0.2.0 beta.
+# Dev line = in-tree / daily work (pyproject [project].version on main).
+# Beta line = last tagged beta (or next beta target); bump bN when cutting a beta release.
 
-Dev  0.2.0b2
-Beta 0.2.0b2
+Dev  0.2.0.dev5
+Beta 0.2.0b4

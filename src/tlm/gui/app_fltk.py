@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 import json
+import threading
+import webbrowser
 
 from tlm import __version__
+from tlm.self_update import format_version_update_status
 from tlm.memory import STORAGE_RULES_TEXT, iter_longterm, load_ready, save_ready
 from tlm.providers.registry import REAL_PROVIDER_IDS, get_provider
 from tlm.session import list_sessions, load_session, write_last_session_id
 from tlm.settings import load_settings, save_settings
+from tlm.web.lightpanda_release import (
+    RELEASES_PAGE,
+    compare_status,
+    describe_local_install,
+    fetch_latest_release,
+    install_latest_to_data_dir,
+    preferred_asset_basename,
+)
 from tlm.telemetry import requests_log_path, summarize_usage
 
 
@@ -36,19 +47,25 @@ def _maybe_keyring_set(provider_id: str, secret: str) -> None:
 
 def run_gui_fltk() -> None:
     from fltk import (  # type: ignore[import-not-found]
+        FL_ALIGN_LEFT,
+        FL_ALIGN_TOP,
         FL_SECRET_INPUT,
         FL_WHEN_CHANGED,
         Fl,
         Fl_Browser,
         Fl_Box,
         Fl_Button,
+        Fl_Check_Button,
         Fl_Choice,
+        Fl_Double_Window,
         Fl_Group,
         Fl_Input,
         Fl_Multiline_Input,
+        Fl_Progress,
         Fl_Tabs,
         Fl_Window,
         fl_alert,
+        fl_choice,
     )
 
     provider_ids = ["stub", *REAL_PROVIDER_IDS]
@@ -61,6 +78,7 @@ def run_gui_fltk() -> None:
             self.win.begin()
 
             tabs = Fl_Tabs(8, 8, 704, 460)
+            tabs.when(FL_WHEN_CHANGED)
             tabs.begin()
 
             # Keys
@@ -87,6 +105,30 @@ def run_gui_fltk() -> None:
             bt = Fl_Button(500, 125, 160, 28, "Test connection")
             bt.callback(self._test_keys)
             gk.end()
+
+            # Web / Lightpanda
+            gw = Fl_Group(8, 35, 704, 425, "Web / Lightpanda")
+            self._gw_web = gw
+            gw.begin()
+            self.web_en = Fl_Check_Button(20, 52, 380, 22, "web_enabled (ask / tlm-web)")
+            self.web_en.value(1 if self.settings.web_enabled else 0)
+            Fl_Box(20, 78, 120, 22, "lightpanda path")
+            self.lp_path_in = Fl_Input(140, 76, 530, 22)
+            self.lp_path_in.value(self.settings.lightpanda_path or "")
+            self.lp_auto = Fl_Check_Button(20, 104, 420, 22, "Auto-check GitHub when opening this tab")
+            self.lp_auto.value(1 if self.settings.web_check_lightpanda_updates else 0)
+            Fl_Box(20, 132, 200, 18, "Status (Refresh queries GitHub)")
+            self.lp_status = Fl_Multiline_Input(20, 152, 660, 230)
+            self.lp_status.value("")
+            bw1 = Fl_Button(20, 392, 110, 28, "Save web")
+            bw1.callback(self._save_web_fltk)
+            bw2 = Fl_Button(140, 392, 100, 28, "Refresh")
+            bw2.callback(self._refresh_lp_fltk)
+            bw3 = Fl_Button(250, 392, 160, 28, "Download binary")
+            bw3.callback(self._download_lp_fltk)
+            bw4 = Fl_Button(420, 392, 140, 28, "Open releases")
+            bw4.callback(self._open_lp_releases)
+            gw.end()
 
             # Sessions
             gs = Fl_Group(8, 35, 704, 425, "Sessions")
@@ -149,6 +191,16 @@ def run_gui_fltk() -> None:
             ps.callback(self._save_profile)
             gp.end()
 
+            # About / version & tlm GitHub update status
+            gabout = Fl_Group(8, 35, 704, 425, "About")
+            self._gw_about = gabout
+            gabout.begin()
+            Fl_Box(20, 52, 660, 22, "Version, install kind, and latest GitHub tag (Refresh queries the network).")
+            self.about_txt = Fl_Multiline_Input(20, 78, 660, 320)
+            ba = Fl_Button(20, 408, 300, 28, "Refresh (query GitHub)")
+            ba.callback(self._refresh_about_fltk)
+            gabout.end()
+
             tabs.end()
 
             close = Fl_Button(620, 478, 90, 28, "Close")
@@ -162,6 +214,9 @@ def run_gui_fltk() -> None:
             self._refresh_logs()
             self._load_key_for_provider()
 
+            self._tabs = tabs
+            tabs.callback(self._on_tabs_fltk)
+            self._about_fill(False)
             self.win.show()
             Fl.run()
 
@@ -193,6 +248,144 @@ def run_gui_fltk() -> None:
                 _maybe_keyring_set(pid, self.key_in.value().strip())
             save_settings(s)
             fl_alert("tlm: Saved config.toml (and keyring if available).")
+
+        def _save_web_fltk(self, *_a: object) -> None:
+            s = load_settings()
+            s.web_enabled = bool(int(self.web_en.value()))
+            lp = self.lp_path_in.value().strip()
+            s.lightpanda_path = lp if lp else None
+            s.web_check_lightpanda_updates = bool(int(self.lp_auto.value()))
+            save_settings(s)
+            fl_alert("tlm: Saved web settings.")
+
+        def _refresh_lp_fltk(self, *_a: object) -> None:
+            s = load_settings()
+            s.web_enabled = bool(int(self.web_en.value()))
+            s.lightpanda_path = self.lp_path_in.value().strip() or None
+            lines = [describe_local_install(s), ""]
+            want = preferred_asset_basename()
+            if not want:
+                lines.append("No mapped GitHub asset for this platform.")
+            else:
+                ok, data = fetch_latest_release(timeout=15.0)
+                if ok and isinstance(data, dict):
+                    lines.append(compare_status(s, data))
+                else:
+                    lines.append(f"GitHub error: {data}")
+            self.lp_status.value("\n".join(lines))
+
+        def _download_lp_fltk(self, *_a: object) -> None:
+            if fl_choice(
+                "Download latest Lightpanda for this OS into ~/.local/share/tlm/bin ?",
+                "OK",
+                "Cancel",
+                None,
+            ) != 0:
+                return
+
+            cancel_ev = threading.Event()
+            state: dict[str, object] = {
+                "done": False,
+                "err": None,
+                "result": None,
+                "got": 0,
+                "tot": None,
+            }
+
+            def _fmt_b(n: int) -> str:
+                if n < 1024:
+                    return f"{n} B"
+                if n < 1024 * 1024:
+                    return f"{n / 1024:.1f} KiB"
+                return f"{n / (1024 * 1024):.1f} MiB"
+
+            def prog_cb(n: int, t: int | None) -> None:
+                state["got"], state["tot"] = n, t
+
+            def worker() -> None:
+                try:
+                    s = load_settings()
+                    s.web_enabled = bool(int(self.web_en.value()))
+                    s.lightpanda_path = self.lp_path_in.value().strip() or None
+                    state["result"] = install_latest_to_data_dir(
+                        s,
+                        timeout=600.0,
+                        cancel_event=cancel_ev,
+                        progress=prog_cb,
+                    )
+                except BaseException as e:  # noqa: BLE001
+                    state["err"] = e
+                finally:
+                    state["done"] = True
+
+            win_dl = Fl_Double_Window(460, 168, "tlm — downloading Lightpanda")
+            win_dl.set_modal()
+            bx = Fl_Box(20, 10, 420, 36, "")
+            bx.align(FL_ALIGN_LEFT | FL_ALIGN_TOP)
+            pr = Fl_Progress(20, 52, 420, 22)
+            pr.minimum(1.0)
+            pr.maximum(0.0)
+            Fl_Box(20, 78, 420, 28, "Partial download resumes next time (same URL). Cancel keeps .partial.")
+            bc = Fl_Button(320, 118, 120, 28, "Cancel")
+
+            def on_cancel(*_a: object) -> None:
+                cancel_ev.set()
+                bx.label("Cancelling…")
+
+            bc.callback(on_cancel)
+            win_dl.end()
+
+            def poll_cb(*_args: object) -> None:
+                if not state["done"]:
+                    got = int(state["got"] or 0)
+                    tot = state["tot"]
+                    if tot and int(tot) > 0:
+                        pr.minimum(0.0)
+                        pr.maximum(100.0)
+                        pr.value(min(100.0, 100.0 * got / int(tot)))
+                    else:
+                        pr.minimum(1.0)
+                        pr.maximum(0.0)
+                    tlab = _fmt_b(int(tot)) if tot else "…"
+                    bx.label(f"{_fmt_b(got)} / {tlab}")
+                    Fl.repeat_timeout(0.08, poll_cb)
+                    return
+                win_dl.hide()
+                err = state["err"]
+                if err is not None:
+                    fl_alert(f"tlm: Download failed: {err}")
+                    return
+                raw = state["result"]
+                if not isinstance(raw, tuple) or len(raw) != 3:
+                    fl_alert("tlm: Download finished with no result (unexpected).")
+                    return
+                ok, msg, dest = raw
+                if ok and dest:
+                    self.lp_path_in.value(str(dest))
+                    self._save_web_fltk()
+                    self._refresh_lp_fltk()
+                    fl_alert(msg)
+                elif "cancelled" in str(msg).lower():
+                    fl_alert(f"tlm: {msg}")
+                else:
+                    fl_alert(f"tlm: {msg}")
+
+            threading.Thread(target=worker, daemon=True).start()
+            win_dl.show()
+            Fl.add_timeout(0.08, poll_cb)
+
+        def _open_lp_releases(self, *_a: object) -> None:
+            webbrowser.open(RELEASES_PAGE)
+
+        def _on_tabs_fltk(self, *_a: object) -> None:
+            try:
+                g = self._tabs
+                if g.value() == self._gw_web and bool(int(self.lp_auto.value())):
+                    self._refresh_lp_fltk()
+                if g.value() == self._gw_about:
+                    self._about_fill(False)
+            except (TypeError, ValueError, AttributeError):
+                pass
 
         def _test_keys(self, *_a: object) -> None:
             s = load_settings()
@@ -271,5 +464,11 @@ def run_gui_fltk() -> None:
             s.safety_profile = labels[i] if 0 <= i < 3 else "standard"
             save_settings(s)
             fl_alert("tlm: Saved safety profile.")
+
+        def _about_fill(self, online: bool) -> None:
+            self.about_txt.value(format_version_update_status(load_settings(), query_github=online))
+
+        def _refresh_about_fltk(self, *_a: object) -> None:
+            self._about_fill(True)
 
     FltkConfig()

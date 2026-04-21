@@ -16,3 +16,26 @@ def test_no_args_prints_help() -> None:
 
 def test_natural_language_not_subcommand() -> None:
     assert "show" not in KNOWN_SUBCOMMANDS
+
+
+def test_context_commands_registered() -> None:
+    assert "new" in KNOWN_SUBCOMMANDS
+    assert "clear" in KNOWN_SUBCOMMANDS
+
+
+def test_web_subcommand_registered() -> None:
+    assert "web" in KNOWN_SUBCOMMANDS
+
+
+def test_web_invokes_cmd_ask_with_web_focus(monkeypatch) -> None:
+    called: dict = {}
+
+    def fake_cmd_ask(text: str, **kwargs) -> int:
+        called["text"] = text
+        called["web_focus"] = kwargs.get("web_focus")
+        return 0
+
+    monkeypatch.setattr("tlm.cli.cmd_ask", fake_cmd_ask)
+    assert main(["web", "price", "check"]) == 0
+    assert called["text"] == "price check"
+    assert called["web_focus"] is True
