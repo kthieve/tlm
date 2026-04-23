@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from tlm.ask_tools import _run_web_ops_interactive, split_reply_tools
+from tlm.ask_tools import WebConsent, _run_web_ops_interactive, split_reply_tools
 from tlm.settings import UserSettings
 from tlm.web.brave_search_api import brave_web_search, format_brave_web_results
 from tlm.web.lightpanda import (
     build_fetch_argv,
+    detect_fetch_capabilities,
     normalize_search_provider,
     search_url_for_query,
     validate_url,
@@ -95,6 +96,44 @@ def test_build_fetch_argv_no_robots() -> None:
     assert argv[-1] == "https://ex.test"
 
 
+def test_build_fetch_argv_user_agent_passthrough() -> None:
+    argv = build_fetch_argv(
+        "lp",
+        "https://ex.test",
+        dump="markdown",
+        obey_robots=False,
+        user_agent="Mozilla/5.0 UnitTest",
+        supports_user_agent=True,
+    )
+    i = argv.index("--user-agent")
+    assert argv[i + 1] == "Mozilla/5.0 UnitTest"
+
+
+def test_build_fetch_argv_user_agent_suffix_passthrough() -> None:
+    argv = build_fetch_argv(
+        "lp",
+        "https://ex.test",
+        dump="markdown",
+        obey_robots=False,
+        user_agent_suffix="tlm-test",
+        supports_user_agent_suffix=True,
+    )
+    i = argv.index("--user-agent-suffix")
+    assert argv[i + 1] == "tlm-test"
+
+
+def test_detect_fetch_capabilities_parse_help(monkeypatch) -> None:
+    class _Proc:
+        stdout = "--user-agent\n--user-agent-suffix\n"
+        stderr = ""
+
+    detect_fetch_capabilities.cache_clear()
+    monkeypatch.setattr("tlm.web.lightpanda.subprocess.run", lambda *a, **k: _Proc())
+    caps = detect_fetch_capabilities("/bin/lightpanda")
+    assert caps["user_agent"]
+    assert caps["user_agent_suffix"]
+
+
 def test_split_reply_tools_web() -> None:
     text = (
         'Hi.\n```tlm-web\n{"op": "fetch", "url": "https://a.example"}\n```\n'
@@ -131,23 +170,27 @@ def test_split_reply_tools_web_json_array() -> None:
     assert "tlm-web" not in v
 
 
-def test_web_ops_batch_confirm_once_then_reuse_session(monkeypatch) -> None:
-    confirms: list[str] = []
+def test_web_ops_batch_approve_batch_then_reuse_no_second_prompt(monkeypatch) -> None:
+    """Choice [1] approves the batch; same WebConsent has keys, so the second run asks nothing."""
+    inputs: list[str] = []
 
-    def fake_confirm(*, question: str, **kwargs: object) -> bool:
-        confirms.append(question)
-        return True
+    def fake_input(prompt: str = "") -> str:  # noqa: ARG001
+        inputs.append(prompt)
+        return "1"  # Approve this batch only
 
-    monkeypatch.setattr("tlm.ask_tools._confirm_web", fake_confirm)
-    monkeypatch.setattr("tlm.ask_tools._run_argv", lambda *a, **k: (0, "ok"))
+    monkeypatch.setattr("builtins.input", fake_input)
+    monkeypatch.setattr(
+        "tlm.ask_tools._run_argv",
+        lambda *a, **k: (0, "stdout:\nok\n\nexit_code: 0\n"),
+    )
 
-    s = UserSettings(web_enabled=True, web_search_provider="duckduckgo")
-    session: set[str] = set()
+    s = UserSettings(web_enabled=True, web_search_provider="duckduckgo", web_concurrency=2)
+    wc = WebConsent()
     ops = [
         {"op": "fetch", "url": "https://example.com/a"},
         {"op": "fetch", "url": "https://example.com/b"},
     ]
-    _run_web_ops_interactive(
+    r1 = _run_web_ops_interactive(
         ops,
         settings=s,
         bin_path="/bin/lightpanda",
@@ -156,13 +199,12 @@ def test_web_ops_batch_confirm_once_then_reuse_session(monkeypatch) -> None:
         RichPanel=None,
         RichConfirm=None,
         use_rich=False,
-        session_approved=session,
+        web_consent=wc,
     )
-    assert len(confirms) == 1
-    assert "Approve all 2" in confirms[0]
+    assert any("WEB RESULTS INDEX" in p for p in r1)
+    n_prompts = len(inputs)
 
-    confirms.clear()
-    _run_web_ops_interactive(
+    r2 = _run_web_ops_interactive(
         ops,
         settings=s,
         bin_path="/bin/lightpanda",
@@ -171,9 +213,10 @@ def test_web_ops_batch_confirm_once_then_reuse_session(monkeypatch) -> None:
         RichPanel=None,
         RichConfirm=None,
         use_rich=False,
-        session_approved=session,
+        web_consent=wc,
     )
-    assert confirms == []
+    assert any("WEB RESULTS INDEX" in p for p in r2)
+    assert len(inputs) == n_prompts
 
 
 def test_format_brave_web_results_basic() -> None:

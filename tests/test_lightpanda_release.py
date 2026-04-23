@@ -12,6 +12,7 @@ from tlm.web.lightpanda_release import (
     fetch_latest_release,
     pick_asset_download_url,
     preferred_asset_basename,
+    try_add_tlm_data_bin_to_path_rc,
 )
 
 
@@ -178,6 +179,32 @@ def test_download_release_binary_resume_206(tmp_path, monkeypatch) -> None:
     assert ok is True
     assert dest.read_bytes() == b"abcdefghij"
     assert not marker.is_file()
+
+
+def test_try_add_tlm_data_bin_to_path_idempotent(tmp_path, monkeypatch) -> None:
+    from tlm.web import lightpanda_release as lr
+
+    d = tmp_path / "share" / "tlm"
+    (d / "bin").mkdir(parents=True)
+    lp = d / "bin" / "lightpanda"
+    lp.write_bytes(b"fake")
+    lp.chmod(0o755)
+    monkeypatch.setattr(lr, "data_dir", lambda: d)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    rc = home / ".bashrc"
+    ok, msg = try_add_tlm_data_bin_to_path_rc()
+    assert ok is True
+    assert "Appended" in msg or "bashrc" in msg.lower()
+    text = rc.read_text(encoding="utf-8")
+    assert "PATH" in text
+    assert lr._PATH_RC_MARKER in text
+    ok2, msg2 = try_add_tlm_data_bin_to_path_rc()
+    assert ok2 is True
+    assert "already" in msg2.lower()
+    assert rc.read_text(encoding="utf-8").count(lr._PATH_RC_MARKER) == 1
 
 
 def test_compare_status_uses_resolve(monkeypatch) -> None:

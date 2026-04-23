@@ -41,6 +41,7 @@ from tlm.web.lightpanda_release import (
     fetch_latest_release,
     install_latest_to_data_dir,
     preferred_asset_basename,
+    try_add_tlm_data_bin_to_path_rc,
 )
 from tlm.telemetry import requests_log_path, summarize_usage
 from tlm.telemetry.log import scrub_text_line
@@ -195,6 +196,8 @@ def run_gui() -> None:
     ws = load_settings()
     web_en_var = tk.BooleanVar(value=bool(ws.web_enabled))
     lp_path_var = tk.StringVar(value=ws.lightpanda_path or "")
+    web_ua_var = tk.StringVar(value=ws.web_user_agent or "")
+    web_ua_suffix_var = tk.StringVar(value=ws.web_user_agent_suffix or "")
     web_auto_check_var = tk.BooleanVar(value=bool(ws.web_check_lightpanda_updates))
 
     lf_web = ttk.LabelFrame(tab_web, text="Ask mode — `tlm-web` / `tlm web`", padding=(12, 10))
@@ -221,6 +224,14 @@ def run_gui() -> None:
         text="Auto-check GitHub release when opening this tab",
         variable=web_auto_check_var,
     ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
+    ttk.Label(lf_web, text="web_user_agent").grid(row=3, column=0, sticky="w", pady=(10, 0))
+    ttk.Entry(lf_web, textvariable=web_ua_var, width=52).grid(row=3, column=1, sticky="we", pady=(10, 0))
+    ttk.Label(lf_web, text="web_user_agent_suffix").grid(row=4, column=0, sticky="w", pady=(8, 0))
+    ttk.Entry(lf_web, textvariable=web_ua_suffix_var, width=52).grid(row=4, column=1, sticky="we", pady=(8, 0))
+    ttk.Label(
+        lf_web,
+        text="Compatibility passthrough only. Does not bypass anti-bot checks.",
+    ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
     lf_status = ttk.LabelFrame(tab_web, text="Status & updates (GitHub)", padding=(12, 10))
     lf_status.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
@@ -236,6 +247,10 @@ def run_gui() -> None:
         s.web_enabled = bool(web_en_var.get())
         lp_p = lp_path_var.get().strip()
         s.lightpanda_path = lp_p if lp_p else None
+        ua = web_ua_var.get().strip()
+        uas = web_ua_suffix_var.get().strip()
+        s.web_user_agent = ua or None
+        s.web_user_agent_suffix = uas or None
         s.web_check_lightpanda_updates = bool(web_auto_check_var.get())
         save_settings(s)
         messagebox.showinfo("tlm", "Saved web settings to config.toml.")
@@ -357,6 +372,14 @@ def run_gui() -> None:
                 save_web_settings()
                 messagebox.showinfo("tlm", msg)
                 refresh_lp_status()
+                pdir = dest.parent
+                if messagebox.askyesno(
+                    "tlm",
+                    f"Add {pdir} to your PATH in ~/.bashrc or ~/.zshrc (based on $SHELL)?\n"
+                    "New terminals will find `lightpanda` without `lightpanda_path` in config.",
+                ):
+                    ok_p, pmsg = try_add_tlm_data_bin_to_path_rc()
+                    (messagebox.showinfo if ok_p else messagebox.showerror)("tlm", pmsg)
             elif "cancelled" in msg.lower():
                 messagebox.showwarning("tlm", msg)
             else:
@@ -383,6 +406,20 @@ def run_gui() -> None:
     ttk.Button(wf, text="Open releases page", command=lambda: webbrowser.open(RELEASES_PAGE)).pack(
         side=tk.LEFT
     )
+
+    def add_tlm_bin_to_path() -> None:
+        ok_p, pmsg = try_add_tlm_data_bin_to_path_rc()
+        (messagebox.showinfo if ok_p else messagebox.showerror)("tlm", pmsg)
+
+    ttk.Button(wf, text="Add data bin to PATH (shell rc)", command=add_tlm_bin_to_path).pack(
+        side=tk.LEFT, padx=(0, 8)
+    )
+    ttk.Label(
+        wf,
+        text="(After install: so `lightpanda` is on PATH; uses ~/.bashrc or ~/.zshrc.)",
+        font=("TkDefaultFont", 8),
+        foreground="#555",
+    ).pack(side=tk.LEFT, padx=(0, 0))
 
     def on_notebook_tab_change(_e: object) -> None:
         try:

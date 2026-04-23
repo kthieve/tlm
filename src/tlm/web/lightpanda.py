@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
+from functools import lru_cache
 from urllib.parse import quote_plus, urlparse
 
 from tlm.settings import UserSettings
@@ -57,12 +59,39 @@ def search_url_for_query(q: str, *, provider: str = "duckduckgo") -> str:
     return DDG_LITE_SEARCH + quote_plus(q.strip())
 
 
+@lru_cache(maxsize=8)
+def detect_fetch_capabilities(binary: str) -> dict[str, bool]:
+    """
+    Probe `lightpanda fetch --help` once per binary path.
+    We use this to gate optional passthrough flags safely.
+    """
+    try:
+        proc = subprocess.run(  # noqa: S603
+            [binary, "fetch", "--help"],
+            shell=False,
+            capture_output=True,
+            text=True,
+            timeout=3.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {"user_agent": False, "user_agent_suffix": False}
+    text = ((proc.stdout or "") + "\n" + (proc.stderr or "")).lower()
+    return {
+        "user_agent": "--user-agent" in text,
+        "user_agent_suffix": "--user-agent-suffix" in text,
+    }
+
+
 def build_fetch_argv(
     binary: str,
     url: str,
     *,
     dump: str,
     obey_robots: bool,
+    user_agent: str | None = None,
+    user_agent_suffix: str | None = None,
+    supports_user_agent: bool | None = None,
+    supports_user_agent_suffix: bool | None = None,
 ) -> list[str]:
     d = dump.lower().strip()
     if d not in ("markdown", "html"):
@@ -70,5 +99,11 @@ def build_fetch_argv(
     argv: list[str] = [binary, "fetch"]
     if obey_robots:
         argv.append("--obey-robots")
+    ua = (user_agent or "").strip()
+    uas = (user_agent_suffix or "").strip()
+    if ua and supports_user_agent is not False:
+        argv.extend(["--user-agent", ua])
+    elif uas and supports_user_agent_suffix is not False:
+        argv.extend(["--user-agent-suffix", uas])
     argv.extend(["--dump", d, "--log-level", "error", url])
     return argv

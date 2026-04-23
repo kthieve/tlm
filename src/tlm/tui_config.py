@@ -14,6 +14,7 @@ from tlm.web.lightpanda_release import (
     fetch_latest_release,
     install_latest_to_data_dir,
     preferred_asset_basename,
+    try_add_tlm_data_bin_to_path_rc,
 )
 
 
@@ -30,15 +31,18 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
         print("\n--- Web / Lightpanda ---", flush=True)
         print(f"  web_enabled: {s.web_enabled}", flush=True)
         print(f"  lightpanda_path: {s.lightpanda_path or '(use PATH)'}", flush=True)
+        print(f"  web_user_agent: {s.web_user_agent or '(unset)'}", flush=True)
+        print(f"  web_user_agent_suffix: {s.web_user_agent_suffix or '(unset)'}", flush=True)
         print(f"  web_check_lightpanda_updates (GUI auto-check): {s.web_check_lightpanda_updates}", flush=True)
         print(f"  Local: {describe_local_install(s).replace(chr(10), ' / ')}", flush=True)
         print("  1) Edit flags / path", flush=True)
         print("  2) Check GitHub latest release (read-only)", flush=True)
         print("  3) Download latest binary to ~/.local/share/tlm/bin/lightpanda", flush=True)
         print(f"  4) Show releases URL ({RELEASES_PAGE})", flush=True)
+        print("  5) Add tlm data bin to PATH (~/.bashrc or ~/.zshrc from $SHELL)", flush=True)
         print("  0) Back to main menu", flush=True)
         try:
-            sub = input("\nChoice [0-4]: ").strip().lower()
+            sub = input("\nChoice [0-5]: ").strip().lower()
         except EOFError:
             return dirty
         if sub == "0":
@@ -71,6 +75,26 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
             elif ac in ("n", "no"):
                 s.web_check_lightpanda_updates = False
                 dirty = True
+            ua = input(f"web_user_agent (empty to keep; current [{s.web_user_agent or ''}]): ").strip()
+            if ua:
+                s.web_user_agent = ua
+                dirty = True
+            elif ua == "" and s.web_user_agent:
+                c = input("Clear web_user_agent? [y/N]: ").strip().lower()
+                if c in ("y", "yes"):
+                    s.web_user_agent = None
+                    dirty = True
+            uas = input(
+                f"web_user_agent_suffix (empty to keep; current [{s.web_user_agent_suffix or ''}]): "
+            ).strip()
+            if uas:
+                s.web_user_agent_suffix = uas
+                dirty = True
+            elif uas == "" and s.web_user_agent_suffix:
+                c = input("Clear web_user_agent_suffix? [y/N]: ").strip().lower()
+                if c in ("y", "yes"):
+                    s.web_user_agent_suffix = None
+                    dirty = True
         elif sub == "2":
             want = preferred_asset_basename()
             if not want:
@@ -91,8 +115,15 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
             print(msg if ok else f"error: {msg}", flush=True)
             if ok and dest:
                 dirty = True
+                ap = input("Add tlm data bin to PATH in your shell rc? [y/N]: ").strip().lower()
+                if ap in ("y", "yes"):
+                    okp, pmsg = try_add_tlm_data_bin_to_path_rc()
+                    print(pmsg if okp else f"error: {pmsg}", flush=True)
         elif sub == "4":
             print(RELEASES_PAGE, flush=True)
+        elif sub == "5":
+            okp, pmsg = try_add_tlm_data_bin_to_path_rc()
+            print(pmsg if okp else f"error: {pmsg}", flush=True)
         else:
             print("Unknown choice.", file=sys.stderr)
 

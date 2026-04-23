@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import webbrowser
+from pathlib import Path
 
 from tlm import __version__
 from tlm.self_update import format_version_update_status
@@ -19,6 +20,7 @@ from tlm.web.lightpanda_release import (
     fetch_latest_release,
     install_latest_to_data_dir,
     preferred_asset_basename,
+    try_add_tlm_data_bin_to_path_rc,
 )
 from tlm.telemetry import requests_log_path, summarize_usage
 
@@ -117,8 +119,15 @@ def run_gui_fltk() -> None:
             self.lp_path_in.value(self.settings.lightpanda_path or "")
             self.lp_auto = Fl_Check_Button(20, 104, 420, 22, "Auto-check GitHub when opening this tab")
             self.lp_auto.value(1 if self.settings.web_check_lightpanda_updates else 0)
-            Fl_Box(20, 132, 200, 18, "Status (Refresh queries GitHub)")
-            self.lp_status = Fl_Multiline_Input(20, 152, 660, 230)
+            Fl_Box(20, 132, 120, 22, "web_user_agent")
+            self.web_ua_in = Fl_Input(140, 130, 530, 22)
+            self.web_ua_in.value(self.settings.web_user_agent or "")
+            Fl_Box(20, 158, 120, 22, "web_ua_suffix")
+            self.web_ua_suffix_in = Fl_Input(140, 156, 530, 22)
+            self.web_ua_suffix_in.value(self.settings.web_user_agent_suffix or "")
+            Fl_Box(20, 184, 360, 18, "Compatibility passthrough only; does not bypass anti-bot checks.")
+            Fl_Box(20, 206, 200, 18, "Status (Refresh queries GitHub)")
+            self.lp_status = Fl_Multiline_Input(20, 226, 660, 156)
             self.lp_status.value("")
             bw1 = Fl_Button(20, 392, 110, 28, "Save web")
             bw1.callback(self._save_web_fltk)
@@ -128,6 +137,8 @@ def run_gui_fltk() -> None:
             bw3.callback(self._download_lp_fltk)
             bw4 = Fl_Button(420, 392, 140, 28, "Open releases")
             bw4.callback(self._open_lp_releases)
+            bw5 = Fl_Button(570, 392, 130, 28, "Add to PATH")
+            bw5.callback(self._add_tlm_bin_to_path_fltk)
             gw.end()
 
             # Sessions
@@ -254,6 +265,10 @@ def run_gui_fltk() -> None:
             s.web_enabled = bool(int(self.web_en.value()))
             lp = self.lp_path_in.value().strip()
             s.lightpanda_path = lp if lp else None
+            ua = self.web_ua_in.value().strip()
+            uas = self.web_ua_suffix_in.value().strip()
+            s.web_user_agent = ua or None
+            s.web_user_agent_suffix = uas or None
             s.web_check_lightpanda_updates = bool(int(self.lp_auto.value()))
             save_settings(s)
             fl_alert("tlm: Saved web settings.")
@@ -365,6 +380,7 @@ def run_gui_fltk() -> None:
                     self._save_web_fltk()
                     self._refresh_lp_fltk()
                     fl_alert(msg)
+                    self._maybe_add_path_after_download_fltk(dest)
                 elif "cancelled" in str(msg).lower():
                     fl_alert(f"tlm: {msg}")
                 else:
@@ -376,6 +392,23 @@ def run_gui_fltk() -> None:
 
         def _open_lp_releases(self, *_a: object) -> None:
             webbrowser.open(RELEASES_PAGE)
+
+        def _add_tlm_bin_to_path_fltk(self, *_a: object) -> None:
+            _ok, msg = try_add_tlm_data_bin_to_path_rc()
+            fl_alert(f"tlm: {msg}")
+
+        def _maybe_add_path_after_download_fltk(self, dest) -> None:
+            pdir = str(Path(dest).parent) if dest else ""
+            if not pdir:
+                return
+            if fl_choice(
+                f"Add {pdir} to PATH in .bashrc/.zshrc (see $SHELL)?",
+                "Yes",
+                "No",
+                None,
+            ) == 0:
+                _ok, msg = try_add_tlm_data_bin_to_path_rc()
+                fl_alert(f"tlm: {msg}")
 
         def _on_tabs_fltk(self, *_a: object) -> None:
             try:

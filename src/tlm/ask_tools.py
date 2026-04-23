@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 
 from tlm.memory import format_ready_for_prompt, format_search_results_for_prompt, prune_ready_to_budget, search_longterm
 from tlm.providers.base import LLMProvider
@@ -16,11 +17,13 @@ from tlm.session import Session, append_assistant, append_user
 from tlm.settings import UserSettings
 from tlm.web.lightpanda import (
     build_fetch_argv,
+    detect_fetch_capabilities,
     normalize_search_provider,
     resolve_binary,
     search_url_for_query,
     validate_url,
 )
+from tlm.web.runner import FetchJob, FetchResult, format_web_feedback, run_web_batch
 
 TLM_EXEC_PATTERN = re.compile(r"```tlm-exec\s*\n(\[[\s\S]*?\])\s*\n```", re.IGNORECASE)
 TLM_MEM_PATTERN = re.compile(r"```tlm-mem\s*\n(\{[\s\S]*?\})\s*\n```", re.IGNORECASE)
@@ -89,11 +92,17 @@ Optional search provider override:
 
 `provider` supports `duckduckgo` or `brave` (both are **HTML search URLs** fetched only via **Lightpanda** — the live search page, not a separate HTTP API). If omitted, tlm uses `web_search_provider` from config (default: `duckduckgo`).
 
-**`tlm-web` always uses Lightpanda** for both `search` and `fetch`: install the `lightpanda` binary (or set `lightpanda_path`). There is no alternate backend inside `tlm-web`.
+DuckDuckGo/Brave **search** pages are often disallowed in `robots.txt`. By default **`web_search_obey_robots` is `false`**, so `search` does not pass `--obey-robots` to Lightpanda (unblocked HTML). Direct **`fetch` URLs** still use **`web_obey_robots`** (default `true`). Set `web_search_obey_robots = true` if you need strict robots for search, or set global `web_obey_robots = false` to also relax fetches.
+
+**`tlm-web` always uses Lightpanda** for both `search` and `fetch`: install the `lightpanda` binary (or set `lightpanda_path`). There is no other built-in **HTML** search in `tlm-web` (no Google/Bing URL shortcuts): use `fetch` for a user-supplied or known `https` URL if needed.
+
+**Policy / "robot" detection:** Automated loading of public search UIs (DDG, Brave) is still machine traffic; sites may cap or block it. There is no supported way in tlm to "pass as" a human. For **contractually clear** search, use a provider’s **official search API** (e.g. Brave) with an API key under their terms — that path is not part of this ```tlm-web``` **Lightpanda** block; do not promise undetectable scraping. Do not advise hiding automation from sites.
+
+**User-Agent passthrough (compatibility only):** if set in config, tlm can pass `web_user_agent` (or `web_user_agent_suffix`) to Lightpanda fetch for compatibility allowlists. This is not anti-bot evasion and may still be blocked by site rules/fingerprints.
 
 **Also use `tlm-web`** whenever the user needs real web pages or search results — prefer **`search`** to discover URLs, then **`fetch`** on the best links. Do **not** substitute `tlm-exec` + `curl` for search-result pages or multi-page research; reserve **`tlm-exec` + curl/wget** for tiny one-off GETs (single known URL, small static/JSON) when that is clearly enough.
 
-Prefer **https** URLs. **Group** `search` + all `fetch` ops **in one** ```tlm-web``` block (array) when you can — the CLI confirms once and reuses approval for the same URL/search if the model retries. Keep tool rounds minimal; use `tlm-exec` for local machine diagnostics or the occasional minimal HTTP GET only.
+Prefer **https** URLs. **Group** `search` + several `fetch` ops **in one** ```tlm-web``` array when you can. The user approves in one step (**[1] this batch**, **[2] trust this tlm run** = no more web prompts, **[3] per-URL**). Multiple fetches run in **parallel** (up to `web_concurrency` in `config.toml`, default 3). Keep tool rounds minimal; use `tlm-exec` for local machine diagnostics or the occasional minimal HTTP GET only. Set `web_auto_approve_run = true` in config to skip web prompts for the whole process.
 
 If web tools are unavailable (`web_enabled` false, Lightpanda missing, or network blocked), do **not** loop forever: answer offline, say what is missing, suggest enabling `web_enabled`, installing Lightpanda, or pasting URLs/text.
 """
@@ -281,6 +290,23 @@ def _lightpanda_env(settings: UserSettings) -> dict[str, str]:
     return env
 
 
+@dataclass
+class WebConsent:
+    """Per-`tlm ask` / `tlm ?` run: which ```tlm-web``` ops are approved; optional one-shot trust for the whole run."""
+
+    approved_keys: set[str] = field(default_factory=set)
+    trust_run: bool = False
+
+
+def _next_hint_for_web(visible: str) -> str:
+    """One-line hint for the progress footer: first non-fence line of the assistant text."""
+    for line in (visible or "").splitlines():
+        t = line.strip()
+        if t and not t.startswith("```"):
+            return t[:400]
+    return "synthesize a final answer from the page content in the tool feedback"
+
+
 def _web_op_session_key(op: dict[str, object], settings: UserSettings) -> str | None:
     """Stable id for consent: same URL/search reuses approval within one `tlm ask` run."""
     op_name = str(op.get("op", "")).lower()
@@ -298,7 +324,7 @@ def _web_op_session_key(op: dict[str, object], settings: UserSettings) -> str | 
     return None
 
 
-def _confirm_web(
+def _confirm_single_web(
     *,
     title: str,
     preview: str,
@@ -315,6 +341,57 @@ def _confirm_web(
     return input(f"{question} [y/N]: ").strip().lower() in ("y", "yes")
 
 
+def _prompt_web_batch_consent(
+    pending: list[dict],
+    web_consent: WebConsent,
+    *,
+    pcon,
+    RichPanel,
+    RichConfirm,
+    use_rich: bool,
+) -> None:
+    if not pending or web_consent.trust_run:
+        return
+    pre_list = "\n\n".join(
+        f"{i}. {s['label']}\n   {s['preview']}" for i, s in enumerate(pending, start=1)
+    )
+    title = f"tlm-web: {len(pending)} Lightpanda request(s)"
+    if use_rich and pcon is not None and RichPanel is not None:
+        pcon.print(RichPanel(pre_list, title=title, border_style="cyan"))
+        pcon.print(
+            "  [1] This batch only   [2] Trust this tlm run (no more web prompts)   [3] Per-item (y/n each)\n"
+        )
+    else:
+        print(f"\n{title}\n{pre_list}", file=sys.stderr, flush=True)
+        print(
+            "  [1] This batch   [2] Trust this tlm run   [3] Per-item",
+            file=sys.stderr,
+            flush=True,
+        )
+    try:
+        choice = (input("Choice [1/2/3] (default 1): ").strip() or "1").lower()
+    except EOFError:
+        choice = "3"
+    if choice in ("2", "trust", "t"):
+        web_consent.trust_run = True
+    elif choice in ("3", "p", "n", "per", "per-item", "i"):
+        for s in pending:
+            ok = _confirm_single_web(
+                title=f"Proposed web: {s['label']}",
+                preview=str(s["preview"]),
+                question="Run this with Lightpanda?",
+                pcon=pcon,
+                RichPanel=RichPanel,
+                RichConfirm=RichConfirm,
+                use_rich=use_rich,
+            )
+            if ok:
+                web_consent.approved_keys.add(str(s["key"]))
+    else:
+        for s in pending:
+            web_consent.approved_keys.add(str(s["key"]))
+
+
 def _run_web_ops_interactive(
     web_ops: list[dict[str, object]],
     *,
@@ -325,13 +402,29 @@ def _run_web_ops_interactive(
     RichPanel,
     RichConfirm,
     use_rich: bool,
-    session_approved: set[str],
+    web_consent: WebConsent,
+    assistant_visible: str = "",
 ) -> list[str]:
     parts: list[str] = []
     dump = settings.web_dump if settings.web_dump in ("markdown", "html") else "markdown"
     allow_http = bool(settings.web_allow_http)
     max_chars = int(settings.web_max_output_chars)
     lp_env = _lightpanda_env(settings)
+    next_hint = _next_hint_for_web(assistant_visible)
+    caps = (
+        detect_fetch_capabilities(str(bin_path))
+        if bin_path
+        else {"user_agent": False, "user_agent_suffix": False}
+    )
+    ua = (settings.web_user_agent or "").strip()
+    ua_suffix = (settings.web_user_agent_suffix or "").strip()
+    if ua and not bool(caps.get("user_agent")):
+        parts.append("(tlm-web: configured `web_user_agent`, but this Lightpanda build lacks `--user-agent`; ignoring.)")
+    if (not ua) and ua_suffix and not bool(caps.get("user_agent_suffix")):
+        parts.append(
+            "(tlm-web: configured `web_user_agent_suffix`, but this Lightpanda build lacks "
+            "`--user-agent-suffix`; ignoring.)"
+        )
 
     steps: list[dict[str, object]] = []
 
@@ -350,17 +443,31 @@ def _run_web_ops_interactive(
                 )
                 continue
             argv = build_fetch_argv(
-                bin_path,
+                str(bin_path),
                 url,
                 dump=dump,
                 obey_robots=bool(settings.web_obey_robots),
+                user_agent=ua,
+                user_agent_suffix=ua_suffix,
+                supports_user_agent=bool(caps.get("user_agent")),
+                supports_user_agent_suffix=bool(caps.get("user_agent_suffix")),
             )
             preview = " ".join(argv)
             key = _web_op_session_key(op, settings)
             if not key:
                 parts.append("(tlm-web fetch missing url)")
                 continue
-            steps.append({"key": key, "label": label, "preview": preview, "argv": argv})
+            kind = "fetch"
+            steps.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "preview": preview,
+                    "argv": argv,
+                    "url": url,
+                    "kind": kind,
+                }
+            )
             continue
 
         if op_name == "search":
@@ -386,84 +493,119 @@ def _run_web_ops_interactive(
                 continue
 
             argv = build_fetch_argv(
-                bin_path,
+                str(bin_path),
                 target,
                 dump=dump,
-                obey_robots=bool(settings.web_obey_robots),
+                obey_robots=bool(settings.web_search_obey_robots),
+                user_agent=ua,
+                user_agent_suffix=ua_suffix,
+                supports_user_agent=bool(caps.get("user_agent")),
+                supports_user_agent_suffix=bool(caps.get("user_agent_suffix")),
             )
             preview = " ".join(argv)
             key = _web_op_session_key(op, settings)
             if not key:
                 parts.append("(tlm-web search missing q)")
                 continue
-            steps.append({"key": key, "label": label, "preview": preview, "argv": argv})
+            steps.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "preview": preview,
+                    "argv": argv,
+                    "url": target,
+                    "kind": "search",
+                }
+            )
             continue
 
         parts.append(f"(unknown tlm-web op: {op.get('op')!r})")
 
-    pending = [s for s in steps if str(s["key"]) not in session_approved]
-    if pending:
-        if len(pending) == 1:
-            s0 = pending[0]
-            run = _confirm_web(
-                title=f"Proposed web: {s0['label']}",
-                preview=str(s0["preview"]),
-                question="Run this with Lightpanda?",
-                pcon=pcon,
-                RichPanel=RichPanel,
-                RichConfirm=RichConfirm,
-                use_rich=use_rich,
-            )
-            if run:
-                session_approved.add(str(s0["key"]))
-        else:
-            batch_preview = "\n\n".join(
-                f"{i}. {s['label']}\n   {s['preview']}" for i, s in enumerate(pending, start=1)
-            )
-            run = _confirm_web(
-                title=f"Proposed web: {len(pending)} Lightpanda requests",
-                preview=batch_preview,
-                question=f"Approve all {len(pending)} requests?",
-                pcon=pcon,
-                RichPanel=RichPanel,
-                RichConfirm=RichConfirm,
-                use_rich=use_rich,
-            )
-            if run:
-                for s in pending:
-                    session_approved.add(str(s["key"]))
-            else:
-                for s in pending:
-                    run_one = _confirm_web(
-                        title=f"Proposed web: {s['label']}",
-                        preview=str(s["preview"]),
-                        question="Run this with Lightpanda?",
-                        pcon=pcon,
-                        RichPanel=RichPanel,
-                        RichConfirm=RichConfirm,
-                        use_rich=use_rich,
-                    )
-                    if run_one:
-                        session_approved.add(str(s["key"]))
+    pending = [
+        s
+        for s in steps
+        if str(s["key"]) not in web_consent.approved_keys and not web_consent.trust_run
+    ]
+    _prompt_web_batch_consent(
+        pending,
+        web_consent,
+        pcon=pcon,
+        RichPanel=RichPanel,
+        RichConfirm=RichConfirm,
+        use_rich=use_rich,
+    )
 
+    if not steps:
+        return [p for p in parts if p] or ["(no web fetches to run)"]
+
+    def _lp_run(argv: list[str]) -> tuple[int, str]:
+        try:
+            return _run_argv(argv, timeout=timeout, env=lp_env)
+        except subprocess.TimeoutExpired as e:
+            return -1, f"stderr:\n{str(e)}\n"
+
+    jobs: list[FetchJob] = []
     for s in steps:
         key = str(s["key"])
-        label = str(s["label"])
-        preview = str(s["preview"])
-        argv = s["argv"]
-        if key not in session_approved:
-            parts.append(f"User declined web: {label}")
-            continue
-        try:
-            _code, body = _run_argv(argv, timeout=timeout, env=lp_env)
-            body = _truncate_for_model(body, max_chars)
-            parts.append(f"$ {preview}\n{body}")
-        except subprocess.TimeoutExpired:
-            parts.append(f"$ {preview}\n(error: timeout after {timeout}s)")
-        except OSError as e:
-            parts.append(f"$ {preview}\n(error: {e})")
+        if web_consent.trust_run or key in web_consent.approved_keys:
+            jobs.append(
+                FetchJob(
+                    key=key,
+                    label=str(s["label"]),
+                    url=str(s["url"]),
+                    argv=list(s["argv"]),
+                    preview=str(s["preview"]),
+                    kind=str(s["kind"]),
+                )
+            )
 
-    return parts
+    batch: list[FetchResult] = []
+    if jobs:
+        batch = run_web_batch(
+            jobs,
+            run_argv=_lp_run,
+            timeout=timeout,
+            env=lp_env,
+            concurrency=_clamp_web_conc(settings),
+            dump=dump,
+            max_output_chars=max_chars,
+            pcon=pcon,
+            use_rich=use_rich,
+            next_hint=next_hint,
+        )
+    by_key: dict[str, FetchResult] = {r.job.key: r for r in batch}
+
+    out_order: list[FetchResult] = []
+    for s in steps:
+        key = str(s["key"])
+        if key in by_key:
+            out_order.append(by_key[key])
+        else:
+            out_order.append(
+                FetchResult(
+                    FetchJob(
+                        key=key,
+                        label=str(s["label"]),
+                        url=str(s["url"]),
+                        argv=list(s["argv"]),
+                        preview=str(s["preview"]),
+                        kind=str(s["kind"]),
+                    ),
+                    status="declined",
+                )
+            )
+
+    out_lines: list[str] = [p for p in parts if p]
+    if out_order:
+        out_lines.append(format_web_feedback(out_order, max_chars=max_chars))
+    if not out_lines:
+        return ["(no web fetches run)"]
+    return out_lines
+
+
+def _clamp_web_conc(settings: UserSettings) -> int:
+    n = int(getattr(settings, "web_concurrency", 3))
+    return max(1, min(8, n))
 
 
 def estimate_ask_tokens(prov: LLMProvider, sys_prompt: str, sess: Session) -> tuple[int, int]:
@@ -589,8 +731,8 @@ def run_interactive_ask(
         "Run in a real terminal to approve fetches, or use `tlm ask --no-web` to hide web tools.)*"
     )
 
-    # One confirmation per distinct URL/search per `tlm ask` run; batch new ops together.
-    web_approved_keys: set[str] = set()
+    # Web approval: [1] batch, [2] trust rest of this run, [3] per-item; or `web_auto_approve_run` in config.
+    web_consent = WebConsent(approved_keys=set(), trust_run=bool(getattr(settings, "web_auto_approve_run", False)))
     max_tool_rounds = max(2, min(32, int(settings.ask_max_tool_rounds)))
 
     while rounds < max_tool_rounds:
@@ -699,7 +841,8 @@ def run_interactive_ask(
                     RichPanel=RichPanel,
                     RichConfirm=RichConfirm,
                     use_rich=use_rich,
-                    session_approved=web_approved_keys,
+                    web_consent=web_consent,
+                    assistant_visible=visible,
                 )
                 feedback_parts.append("\n\n".join(web_parts) if web_parts else "(no web fetches run)")
 

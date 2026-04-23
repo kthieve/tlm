@@ -32,6 +32,14 @@ def _clamp_ask_max_tool_rounds(raw: object) -> int:
     return max(2, min(32, n))
 
 
+def _clamp_web_concurrency(raw: object) -> int:
+    try:
+        n = int(raw) if isinstance(raw, (int, float, str)) else 3
+    except (TypeError, ValueError):
+        n = 3
+    return max(1, min(8, n))
+
+
 @dataclass
 class UserSettings:
     provider: str | None = None
@@ -52,10 +60,21 @@ class UserSettings:
     lightpanda_path: str | None = None
     web_dump: str = "markdown"  # "markdown" | "html"
     web_obey_robots: bool = True
+    # `search` hits HTML search UIs (DDG/Brave) that often disallow bots in robots.txt
+    # — default off so Lightpanda does not pass --obey-robots for `tlm-web` search.
+    # Direct `fetch` still uses `web_obey_robots` above.
+    web_search_obey_robots: bool = False
     web_max_output_chars: int = 48_000
     web_disable_lightpanda_telemetry: bool = True
     web_allow_http: bool = False
     web_search_provider: str = "duckduckgo"  # "duckduckgo" | "brave"
+    # Optional Lightpanda UA passthrough for compatibility allowlists (not anti-detection).
+    web_user_agent: str | None = None
+    web_user_agent_suffix: str | None = None
+    # Max parallel `lightpanda fetch` processes per tlm-web batch (1–8).
+    web_concurrency: int = 3
+    # If true, tlm never prompts for web in this process run — all tlm-web batches run immediately.
+    web_auto_approve_run: bool = False
     # When true, Web settings tab (GUI) may query GitHub for Lightpanda release info on open.
     web_check_lightpanda_updates: bool = False
     # GitHub release hint (stderr); disable with TLM_NO_UPDATE_CHECK=1.
@@ -87,12 +106,23 @@ def save_settings(s: UserSettings) -> None:
         lines.append(f"lightpanda_path = {_toml_escape_str(s.lightpanda_path)}")
     lines.append(f"web_dump = {_toml_escape_str(s.web_dump)}")
     lines.append(f"web_obey_robots = {str(bool(s.web_obey_robots)).lower()}")
+    lines.append(
+        f"web_search_obey_robots = {str(bool(s.web_search_obey_robots)).lower()}"
+    )
     lines.append(f"web_max_output_chars = {int(s.web_max_output_chars)}")
     lines.append(
         f"web_disable_lightpanda_telemetry = {str(bool(s.web_disable_lightpanda_telemetry)).lower()}"
     )
     lines.append(f"web_allow_http = {str(bool(s.web_allow_http)).lower()}")
     lines.append(f"web_search_provider = {_toml_escape_str(s.web_search_provider)}")
+    if s.web_user_agent is not None:
+        lines.append(f"web_user_agent = {_toml_escape_str(s.web_user_agent)}")
+    if s.web_user_agent_suffix is not None:
+        lines.append(f"web_user_agent_suffix = {_toml_escape_str(s.web_user_agent_suffix)}")
+    lines.append(f"web_concurrency = {_clamp_web_concurrency(s.web_concurrency)}")
+    lines.append(
+        f"web_auto_approve_run = {str(bool(s.web_auto_approve_run)).lower()}"
+    )
     lines.append(
         f"web_check_lightpanda_updates = {str(bool(s.web_check_lightpanda_updates)).lower()}"
     )
@@ -153,10 +183,17 @@ def load_settings() -> UserSettings:
         lightpanda_path=data.get("lightpanda_path") if isinstance(data.get("lightpanda_path"), str) else None,
         web_dump=str(data.get("web_dump", "markdown")),
         web_obey_robots=_bool("web_obey_robots", True),
+        web_search_obey_robots=_bool("web_search_obey_robots", False),
         web_max_output_chars=int(data.get("web_max_output_chars", 48_000)),
         web_disable_lightpanda_telemetry=_bool("web_disable_lightpanda_telemetry", True),
         web_allow_http=_bool("web_allow_http", False),
         web_search_provider=str(data.get("web_search_provider", "duckduckgo")),
+        web_user_agent=data.get("web_user_agent") if isinstance(data.get("web_user_agent"), str) else None,
+        web_user_agent_suffix=(
+            data.get("web_user_agent_suffix") if isinstance(data.get("web_user_agent_suffix"), str) else None
+        ),
+        web_concurrency=_clamp_web_concurrency(data.get("web_concurrency", 3)),
+        web_auto_approve_run=_bool("web_auto_approve_run", False),
         web_check_lightpanda_updates=_bool("web_check_lightpanda_updates", False),
         check_for_updates=_bool("check_for_updates", False),
         github_repo=data.get("github_repo") if isinstance(data.get("github_repo"), str) else None,

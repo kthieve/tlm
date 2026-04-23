@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
+import shlex
 import subprocess
 import sys
 import threading
@@ -349,6 +351,77 @@ def download_release_binary(
 
 def default_install_path() -> Path:
     return data_dir() / "bin" / "lightpanda"
+
+
+# Shell rc line — idempotent block managed by tlm (do not hand-edit the marker line)
+_PATH_RC_MARKER = "# tlm: Lightpanda data bin on PATH (managed by tlm; do not duplicate this block)"
+
+
+def tlm_data_bin_dir() -> Path:
+    """`data_dir()/bin` (default parent of the downloaded `lightpanda` binary)."""
+    return (data_dir() / "bin").resolve()
+
+
+def _default_path_rc_file() -> Path:
+    if "zsh" in (os.environ.get("SHELL") or "").lower():
+        return (Path.home() / ".zshrc").resolve()
+    return (Path.home() / ".bashrc").resolve()
+
+
+def path_line_for_tlm_data_bin() -> str:
+    d = str(tlm_data_bin_dir())
+    return f'export PATH="{d}:$PATH"'
+
+
+def tlm_data_bin_on_path() -> bool:
+    """True if tlm's data `bin` is on `PATH` in the current process."""
+    want = str(tlm_data_bin_dir())
+    for p in os.environ.get("PATH", "").split(os.pathsep):
+        if p.rstrip("/") == want:
+            return True
+    return False
+
+
+def tlm_path_block_in_file(content: str) -> bool:
+    return _PATH_RC_MARKER in content
+
+
+def try_add_tlm_data_bin_to_path_rc() -> tuple[bool, str]:
+    """
+    Append a block to `~/.bashrc` or `~/.zshrc` (from `$SHELL`) so new shells
+    see the default `lightpanda` install. No-op if the block is already there.
+    """
+    if not default_install_path().is_file():
+        return (
+            False,
+            f"Default install not found at {default_install_path()}. "
+            "Download the binary from this tab (or TUI) first, then add PATH.",
+        )
+    rc = _default_path_rc_file()
+    line = path_line_for_tlm_data_bin()
+    try:
+        existing = (
+            rc.read_text(encoding="utf-8", errors="replace")
+            if rc.is_file()
+            else ""
+        )
+    except OSError as e:
+        return False, f"Could not read {rc}: {e}"
+    if tlm_path_block_in_file(existing):
+        return True, f"tlm PATH block already present in {rc}."
+    block = f"\n{_PATH_RC_MARKER}\n{line}\n"
+    try:
+        rc.parent.mkdir(parents=True, exist_ok=True)
+        with open(rc, "a", encoding="utf-8") as f:
+            if existing and not existing.endswith("\n"):
+                f.write("\n")
+            f.write(block)
+    except OSError as e:
+        return False, f"Could not write {rc}: {e}"
+    return (
+        True,
+        f"Appended to {rc}. Open a new terminal, or: source {shlex.quote(str(rc))}",
+    )
 
 
 def install_latest_to_data_dir(
