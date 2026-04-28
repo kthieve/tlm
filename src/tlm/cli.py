@@ -12,7 +12,14 @@ from tlm import __version__
 from tlm.completion import emit as emit_completion
 from tlm.modes.do import run_do
 from tlm.modes.write import run_write
-from tlm.providers.registry import describe_providers, get_provider
+from tlm.config import default_provider
+from tlm.providers.registry import (
+    describe_providers,
+    get_provider,
+    list_remote_model_ids,
+    normalize_provider_id,
+    resolved_model,
+)
 from tlm.setup_wizard import maybe_first_run_wizard, run_setup_wizard
 from tlm.harvest import auto_harvest_session_if_due
 from tlm.session import (
@@ -63,6 +70,7 @@ KNOWN_SUBCOMMANDS = frozenset(
         "allow",
         "unallow",
         "update",
+        "models",
     }
 )
 
@@ -267,6 +275,103 @@ def cmd_providers() -> int:
     for pid, has_key, model in describe_providers():
         key = "yes" if has_key else "no"
         print(f"{pid}\tkey={key}\tmodel={model}")
+    return 0
+
+
+def cmd_models_route(ns: argparse.Namespace) -> int:
+    """List / set / pick models (OpenAI-compatible ``GET .../v1/models``)."""
+    sub = getattr(ns, "models_cmd", None) or "pick"
+    s = load_settings()
+    pid = normalize_provider_id(getattr(ns, "models_provider", None) or s.provider or default_provider())
+
+    if sub == "set":
+        model = getattr(ns, "model_name", "").strip()
+        if not model:
+            print("error: MODEL is required", file=sys.stderr)
+            return 2
+        if getattr(ns, "global_model", False):
+            s.model = model
+        else:
+            s.models[pid] = model
+        save_settings(s)
+        where = "global default" if getattr(ns, "global_model", False) else f"per-provider [{pid}]"
+        print(f"Saved model {model!r} ({where}). Config: {config_file_path()}", file=sys.stderr)
+        return 0
+
+    try:
+        ids = list_remote_model_ids(pid, settings=s)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except RuntimeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    if not ids:
+        print(f"error: empty model list from provider {pid!r}", file=sys.stderr)
+        return 2
+
+    if sub == "list":
+        if getattr(ns, "json_models", False):
+            import json
+
+            print(json.dumps(ids))
+            return 0
+        for i, mid in enumerate(ids, 1):
+            print(f"{i}\t{mid}")
+        return 0
+
+    # pick (default)
+    assert sub == "pick"
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        Console = None  # type: ignore[misc,assignment]
+        Table = None  # type: ignore[misc,assignment]
+
+    cur = resolved_model(pid, s)
+    if Console is not None and Table is not None:
+        console = Console(stderr=True)
+        table = Table(title=f"Models — {pid}", show_lines=False)
+        table.add_column("#", justify="right", style="dim")
+        table.add_column("model id")
+        for i, mid in enumerate(ids, 1):
+            hint = "  (current)" if mid == cur else ""
+            table.add_row(str(i), mid + hint)
+        console.print(table)
+    else:
+        for i, mid in enumerate(ids, 1):
+            mark = "\t*" if mid == cur else ""
+            print(f"{i}\t{mid}{mark}", file=sys.stderr)
+
+    try:
+        raw = input("Number or full model id [empty=cancel]: ").strip()
+    except EOFError:
+        print("cancelled", file=sys.stderr)
+        return 1
+    if not raw:
+        return 0
+
+    chosen: str | None = None
+    if raw.isdigit():
+        n = int(raw)
+        if 1 <= n <= len(ids):
+            chosen = ids[n - 1]
+    if chosen is None:
+        if raw in ids:
+            chosen = raw
+        else:
+            print(f"error: not in list: {raw!r}", file=sys.stderr)
+            return 2
+
+    if getattr(ns, "global_model", False):
+        s.model = chosen
+    else:
+        s.models[pid] = chosen
+    save_settings(s)
+    scope = "global default" if getattr(ns, "global_model", False) else f"for provider {pid}"
+    print(f"Saved {chosen!r} ({scope}).", file=sys.stderr)
     return 0
 
 
@@ -815,6 +920,39 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("providers", help="List providers, key presence, model.").set_defaults(
         _handler=lambda _: cmd_providers()
     )
+
+    p_mod = sub.add_parser(
+        "models",
+        help="List / pick models via provider GET /v1/models; `set` saves model id to config.",
+    )
+    p_mod.add_argument(
+        "--provider",
+        dest="models_provider",
+        metavar="ID",
+        default=None,
+        help="Provider id (default: config provider or TLM_PROVIDER).",
+    )
+    p_mod.add_argument(
+        "--global",
+        action="store_true",
+        dest="global_model",
+        help="With set/pick: write global `model` instead of `[models.<provider>]`.",
+    )
+    msub = p_mod.add_subparsers(dest="models_cmd", required=False, metavar="SUBCOMMAND")
+    p_mlist = msub.add_parser("list", help="Fetch and print remote model ids.")
+    p_mlist.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_models",
+        help="Print one JSON array line.",
+    )
+    msub.add_parser(
+        "pick",
+        help="Interactive picker (default when `tlm models` is run with no subcommand).",
+    )
+    p_mset = msub.add_parser("set", help="Save MODEL to config without calling the API.")
+    p_mset.add_argument("model_name", metavar="MODEL", help="Model id (e.g. deepseek-v4-flash)")
+    p_mod.set_defaults(_handler=cmd_models_route)
 
     p_use = sub.add_parser("usage", help="Summarize token/cost usage from JSONL log.")
     p_use.add_argument("--since", default="30d", help='e.g. "7d" or "30d"')

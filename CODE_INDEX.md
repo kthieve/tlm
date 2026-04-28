@@ -4,7 +4,7 @@
 |------|------|
 | `src/tlm/ask_tools.py` | Ask loop: `tlm-exec`, `tlm-mem`, `tlm-web`, ready-memory system prompt |
 | `src/tlm/web/lightpanda.py` | Lightpanda `fetch` argv, URL validation, DDG search URL |
-| `src/tlm/cli.py` | argparse; `tlm ?`; init/config; natural-language ask; ask/write/do/gui/… |
+| `src/tlm/cli.py` | argparse; `tlm ?`; `tlm models` (GET /v1/models); init/config; ask/write/do/gui/… |
 | `src/tlm/tui_config.py` | `tlm config` interactive terminal editor |
 | `src/tlm/config.py` | XDG paths, env keys, base URL / model env helpers |
 | `src/tlm/settings.py` | `config.toml` load/save (`$XDG_CONFIG_HOME/tlm/`) |

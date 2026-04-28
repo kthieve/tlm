@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from tlm.config import base_url_env, default_model_env, default_provider
 from tlm.providers.base import LLMProvider
-from tlm.providers.openai_compat import DEFAULT_BASE_URLS, DEFAULT_MODELS, OpenAICompatProvider
+from tlm.providers.openai_compat import (
+    DEFAULT_BASE_URLS,
+    DEFAULT_MODELS,
+    OpenAICompatProvider,
+    fetch_remote_model_ids,
+)
 from tlm.providers.stub import StubProvider
 from tlm.settings import UserSettings, load_settings, merged_api_key
 
@@ -30,6 +35,33 @@ def _model_for(pid: str, settings: UserSettings) -> str:
         or DEFAULT_MODELS.get(pid)
         or "gpt-4o-mini"
     )
+
+
+def resolved_model(provider_id: str, settings: UserSettings | None = None) -> str:
+    """Effective model id for *provider_id* given *settings* (env + per-provider + global + built-in default)."""
+    return _model_for(normalize_provider_id(provider_id), settings or load_settings())
+
+
+def list_remote_model_ids(
+    provider_id: str,
+    *,
+    settings: UserSettings | None = None,
+    timeout: float = 45.0,
+) -> list[str]:
+    """Fetch model ids from the provider's ``/v1/models`` endpoint (requires API key)."""
+    pid = normalize_provider_id(provider_id)
+    if pid == "stub":
+        raise ValueError("`stub` has no remote model list.")
+    if pid not in REAL_PROVIDER_IDS:
+        raise ValueError(f"Unknown provider: {provider_id!r}. Known: {sorted(REAL_PROVIDER_IDS)}")
+    s = settings or load_settings()
+    key = merged_api_key(pid, s)
+    if not key:
+        raise ValueError(
+            f"No API key for provider {pid!r}. Set `keys` in config or TLM_{pid.upper().replace('-', '_')}_API_KEY."
+        )
+    base = _base_url_for(pid)
+    return fetch_remote_model_ids(provider_id=pid, base_url=base, api_key=key, timeout=timeout)
 
 
 def _base_url_for(pid: str) -> str:

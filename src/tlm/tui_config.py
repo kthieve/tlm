@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from tlm.providers.registry import REAL_PROVIDER_IDS
+from tlm.providers.registry import REAL_PROVIDER_IDS, list_remote_model_ids, normalize_provider_id, resolved_model
 from tlm.self_update import format_config_header_status, format_version_update_status
 from tlm.settings import UserSettings, config_file_path, load_settings, merged_api_key, save_settings
 from tlm.web.lightpanda_release import (
@@ -206,11 +206,44 @@ def run_config_tui() -> int:
                 s.api_keys[pid] = v
                 dirty = True
         elif choice == "7":
-            prov = input(f"provider id (default {pid}): ").strip() or pid
-            m = input("model for that provider: ").strip()
-            if m:
-                s.models[prov] = m
-                dirty = True
+            prov_raw = input(f"provider id (default {pid}): ").strip() or pid
+            prov = normalize_provider_id(prov_raw)
+            print("  1) Type model id manually", flush=True)
+            print("  2) Fetch models from API (GET /v1/models) and pick by number", flush=True)
+            subm = input("Choice [1/2] (default 1): ").strip().lower()
+            if subm == "2":
+                try:
+                    ids = list_remote_model_ids(prov, settings=s)
+                except (ValueError, RuntimeError) as e:
+                    print(f"error: {e}", file=sys.stderr)
+                    continue
+                if not ids:
+                    print("No models returned.", flush=True)
+                    continue
+                cur_m = resolved_model(prov, s)
+                for i, mid in enumerate(ids, 1):
+                    tag = " *current*" if mid == cur_m else ""
+                    print(f"  {i}) {mid}{tag}", flush=True)
+                raw = input("Number or exact model id (empty=cancel): ").strip()
+                if not raw:
+                    continue
+                chosen = None
+                if raw.isdigit():
+                    n = int(raw)
+                    if 1 <= n <= len(ids):
+                        chosen = ids[n - 1]
+                if chosen is None and raw in ids:
+                    chosen = raw
+                if chosen:
+                    s.models[prov] = chosen
+                    dirty = True
+                elif raw:
+                    print("Invalid selection.", file=sys.stderr)
+            else:
+                m = input("model for that provider: ").strip()
+                if m:
+                    s.models[prov] = m
+                    dirty = True
         elif choice == "w":
             dirty = dirty or _web_lightpanda_menu(s)
         elif choice == "m":

@@ -27,6 +27,10 @@ def test_web_subcommand_registered() -> None:
     assert "web" in KNOWN_SUBCOMMANDS
 
 
+def test_models_subcommand_registered() -> None:
+    assert "models" in KNOWN_SUBCOMMANDS
+
+
 def test_web_invokes_cmd_ask_with_web_focus(monkeypatch) -> None:
     called: dict = {}
 

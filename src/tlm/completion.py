@@ -20,7 +20,7 @@ _tlm() {
   COMPREPLY=()
   cur="${COMP_WORDS[COMP_CWORD]}"
   if [ "${COMP_CWORD}" -eq 1 ]; then
-    COMPREPLY=( $(compgen -W "gui ask web write do providers sessions usage completion init config new harvest help paths allow unallow update ?" -- "${cur}") )
+    COMPREPLY=( $(compgen -W "gui ask web write do providers models sessions usage completion init config new harvest help paths allow unallow update ?" -- "${cur}") )
   elif [ "${COMP_CWORD}" -eq 2 ] && [ "${COMP_WORDS[1]}" = "init" ]; then
     COMPREPLY=( $(compgen -W "--wizard --no-wizard" -- "${cur}") )
   fi
@@ -33,7 +33,7 @@ _ZSH = r"""
 #compdef tlm
 _tlm() {
   local -a cmds
-  cmds=(gui ask web write do providers sessions usage completion new harvest help paths allow unallow update '?:help')
+  cmds=(gui ask web write do providers models sessions usage completion new harvest help paths allow unallow update '?:help')
   _arguments '1: :->cmd' '*:: :->args'
   case $state in
     cmd) _describe -t commands command cmds ;;
@@ -55,6 +55,7 @@ complete -c tlm -n "__fish_use_subcommand" -a web -d "Ask with web tools emphasi
 complete -c tlm -n "__fish_use_subcommand" -a write -d "Write files (confirm)"
 complete -c tlm -n "__fish_use_subcommand" -a do -d "Run commands (confirm)"
 complete -c tlm -n "__fish_use_subcommand" -a providers -d "List providers"
+complete -c tlm -n "__fish_use_subcommand" -a models -d "List/pick remote models"
 complete -c tlm -n "__fish_use_subcommand" -a sessions -d "Session TUI or list/resume/…"
 complete -c tlm -n "__fish_use_subcommand" -a new -d "New named session"
 complete -c tlm -n "__fish_use_subcommand" -a harvest -d "Harvest facts to memory"

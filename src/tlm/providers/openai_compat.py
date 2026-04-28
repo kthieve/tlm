@@ -20,11 +20,70 @@ DEFAULT_BASE_URLS: dict[str, str] = {
 
 DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o-mini",
-    "deepseek": "deepseek-chat",
+    # deepseek-chat / deepseek-reasoner deprecated 2026-07-24 (→ v4-flash non-thinking / thinking)
+    "deepseek": "deepseek-v4-flash",
     "openrouter": "openai/gpt-4o-mini",
     "chutes": "meta-llama/Llama-3.3-70B-Instruct",
     "nano-gpt": "gpt-4o-mini",
 }
+
+
+def _models_headers(provider_id: str, api_key: str) -> dict[str, str]:
+    h = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+    if provider_id == "openrouter":
+        h["HTTP-Referer"] = "https://github.com/tlm-cli/tlm"
+        h["X-Title"] = "tlm"
+    return h
+
+
+def fetch_remote_model_ids(
+    *,
+    provider_id: str,
+    base_url: str,
+    api_key: str,
+    timeout: float = 45.0,
+) -> list[str]:
+    """GET OpenAI-compatible ``/v1/models``; return sorted unique model ids."""
+    b = base_url.rstrip("/")
+    url = f"{b}/models"
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.get(url, headers=_models_headers(provider_id, api_key))
+                if r.status_code == 429 and attempt < 2:
+                    time.sleep(0.5 * (2**attempt))
+                    continue
+                if r.status_code in (401, 403):
+                    raise RuntimeError("API authentication failed (check API key).") from None
+                if r.status_code == 404:
+                    raise RuntimeError(
+                        f"GET {url} returned 404; this endpoint may be unsupported for this provider."
+                    ) from None
+                r.raise_for_status()
+                data = r.json()
+        except httpx.HTTPStatusError as e:
+            txt = e.response.text[:500] if e.response is not None else ""
+            raise RuntimeError(f"HTTP {e.response.status_code if e.response else '?'}: {txt}") from e
+        except httpx.RequestError as e:
+            last_err = e
+            if attempt < 2:
+                time.sleep(0.3 * (2**attempt))
+                continue
+            raise RuntimeError(f"network error: {e}") from e
+        else:
+            out: list[str] = []
+            rows = data.get("data") if isinstance(data, dict) else None
+            if isinstance(rows, list):
+                for item in rows:
+                    if isinstance(item, dict):
+                        mid = item.get("id")
+                        if isinstance(mid, str) and mid.strip():
+                            out.append(mid.strip())
+            return sorted(set(out))
+    if last_err is not None:
+        raise RuntimeError(f"request failed: {last_err}")
+    raise RuntimeError("unexpected: no response")
 
 
 def _count_tokens_heuristic(text: str) -> int:

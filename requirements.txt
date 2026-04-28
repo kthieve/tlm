@@ -3,4 +3,4 @@ packaging>=24.0
 python-dotenv>=1.0
 rich>=13.7
 
-# Version aligned with [project].version (0.2.0.dev5 dev train; betas use 0.2.0bN).
+# Version aligned with [project].version (0.2.0.dev7 dev train; betas use 0.2.0bN).
