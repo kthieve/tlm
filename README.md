@@ -134,13 +134,16 @@ Man page stub: [docs/tlm.1](docs/tlm.1).
 
 ## Development sandbox
 
+Creates **`sandboxes/default/`** (venv + isolated XDG). Full layout, **`refresh`**, Windows vs POSIX **`env`**, and **`--sandbox`** resume are documented in **[sandbox/README.md](sandbox/README.md)**.
+
 ```bash
-eval "$(python sandbox.py env)"
-tlm init
-python sandbox.py run tlm ask "hello"
+python sandbox.py init
+eval "$(python sandbox.py env)"          # Linux / macOS / Bash — Git Bash on Windows use env --posix if needed
+python sandbox.py env --pwsh             # native Windows PowerShell
+python sandbox.py run -- tlm ask "hello"
 ```
 
-Details: [sandbox/README.md](sandbox/README.md).
+More detail: [sandbox/README.md](sandbox/README.md).
 
 ---
 

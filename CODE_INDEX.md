@@ -41,7 +41,7 @@
 | `docs/install.md` | Install from git / GitHub; PyPI section for when published |
 | `docs/sessions-and-memory.md` | Sessions, memory tiers, harvest |
 | `docs/documentation.md` | Index of repo docs |
-| `sandbox.py` | Dev sandbox CLI: `env`, `init`, `refresh` (keeps API keys unless `--wipe-keys`), `run`, `shell` |
+| `sandbox.py` | Dev sandbox: `sandboxes/<name>/` venv + XDG; `init`, `env` (POSIX/`--pwsh`), `refresh`, `run`, `shell` |
 | `sandbox/README.md` | How to use the sandbox |
 | `tests/` | pytest + ruff in CI |
 | `pyproject.toml` | Packaging, extras `usage` / `dev`, pytest `pythonpath` |

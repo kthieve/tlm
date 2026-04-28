@@ -10,6 +10,7 @@ dist/
 build/
 .coverage
 htmlcov/
-# Local-only tlm state when using sandbox/env.sh
+# Dev sandboxes (venv + isolated XDG); legacy repo sandbox/ dirs optional
+sandboxes/
 sandbox/.config/
 sandbox/.local/

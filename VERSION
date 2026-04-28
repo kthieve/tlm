@@ -7,5 +7,5 @@
 # Dev line = in-tree / daily work (pyproject [project].version on main).
 # Beta line = last tagged beta (or next beta target); bump bN when cutting a beta release.
 
-Dev  0.2.0.dev7
+Dev  0.2.0.dev8
 Beta 0.2.0b4

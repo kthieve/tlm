@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tlm"
-version = "0.2.0.dev7"
+version = "0.2.0.dev8"
 description = "Linux terminal CLI for LLM Q&A, guarded code write/run, and Tk/FLTK config UI."
 readme = "README.md"
 license = "Apache-2.0"

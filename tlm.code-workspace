@@ -3,5 +3,10 @@
         {
             "path": "."
         }
-    ]
+    ],
+    "settings": {
+        "[markdown]": {
+            "editor.cursorSurroundingLines": 0
+        }
+    }
 }
