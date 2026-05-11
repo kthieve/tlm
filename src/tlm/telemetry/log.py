@@ -93,8 +93,8 @@ def summarize_usage(*, since_days: int | None) -> str:
     cutoff: datetime | None = None
     if since_days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
-    totals: dict[tuple[str, str], dict[str, float]] = defaultdict(
-        lambda: {"in": 0.0, "out": 0.0, "cost": 0.0, "n": 0.0}
+    totals: dict[tuple[str, str], dict[str, Any]] = defaultdict(
+        lambda: {"in": 0.0, "out": 0.0, "cost": 0.0, "n": 0.0, "unknown_cost": False}
     )
     with path.open(encoding="utf-8") as f:
         for line in f:
@@ -121,10 +121,15 @@ def summarize_usage(*, since_days: int | None) -> str:
             c = row.get("cost_usd")
             if c is not None:
                 totals[k]["cost"] += float(c)
+            else:
+                totals[k]["unknown_cost"] = True
             totals[k]["n"] += 1
     lines = ["provider\tmodel\trequests\tin_tok\tout_tok\tcost_usd"]
     for (prov, model), v in sorted(totals.items()):
+        cost_str = f"{v['cost']:.4f}"
+        if v["unknown_cost"]:
+            cost_str += "+"
         lines.append(
-            f"{prov}\t{model}\t{int(v['n'])}\t{int(v['in'])}\t{int(v['out'])}\t{v['cost']:.4f}"
+            f"{prov}\t{model}\t{int(v['n'])}\t{int(v['in'])}\t{int(v['out'])}\t{cost_str}"
         )
     return "\n".join(lines)
