@@ -32,6 +32,10 @@
 | `src/tlm/safety/jail.py` | Path classification (freelist / jail / escape) |
 | `src/tlm/safety/consent.py` | Jail-escape interactive consent |
 | `src/tlm/safety/auth.py` | Password protection and recovery key management |
+| `src/tlm/safety/snapshot.py` | Non-destructive temporal snapshotting (`git stash create` / `copytree`) |
+| `src/tlm/safety/transaction.py` | Atomic Transaction Manager (two-phase commit for file writes) |
+| `src/tlm/safety/proctrack.py` | Multi-process tracking for `tlm stop` (PGID management) |
+| `src/tlm/safety/auth_session.py` | Token-based auth sessions and timeout management |
 | `src/tlm/safety/root_guard.py` | Root / elevation guard |
 | `src/tlm/safety/sandbox.py` | Optional `bwrap` / `firejail` argv wrapper |
 | `src/tlm/safety/tools/` | Modular system tool wrappers (Tiers 0-3 enforcement) |

@@ -31,7 +31,7 @@
 
 Detailed milestone plans for major sub-versions can be found in [`.cursor/plans/version/`](./.cursor/plans/version/index.md).
 
-1. **Foundation (Safety & Streams)** (v0.3.0) — Tiered permissions and token streaming.
+1. **Foundation (Safety & Streams)** (v0.3.0) — Tiered permissions, **Temporal Snapshotting** (stash-based), **Atomic Transactions**, and **Multi-Process Tracking** (`tlm stop`).
 2. **Capabilities (Abilities & Containment)** (v0.4.0) — Source-built tools and venv isolation.
 3. **Optimization (Routing & Telemetry)** (v0.5.0) — Intelligence tiers and cost guards.
 4. **Persistence (Advanced Memory & Worker State)** (v0.6.0) — Deep RAG and the "Heart's Foundation."

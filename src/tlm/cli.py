@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import select
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1118,8 +1119,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_upd.set_defaults(_handler=lambda a: cmd_update_ns(a, load_settings()))
 
     p_undo = sub.add_parser("undo", help="Revert the workspace to a previous snapshot.")
-    p_undo.add_argument("snapshot_id", nargs="?", help="Specific snapshot ID (e.g. tlm-snapshot-123). If omitted, attempts to restore the most recent snapshot.")
+    p_undo.add_argument("snapshot_id", nargs="?", help="Specific snapshot ID. If omitted, prompts with a list of recent snapshots.")
     p_undo.add_argument("--dir", default=".", help="Base directory of the workspace")
+    p_undo.add_argument("--list", action="store_true", help="List all available snapshots")
+    p_undo.add_argument("--hard", action="store_true", help="Skip confirmation prompt")
+    p_undo.add_argument("--dry-run", action="store_true", help="Show what would be restored without acting")
     p_undo.set_defaults(_handler=cmd_undo_ns)
 
     p_stop = sub.add_parser("stop", help="Hard-kill runaway processes and clean up temporary stages.")
@@ -1151,27 +1155,82 @@ def run_gui_safe() -> int:
 
 
 def cmd_undo_ns(ns: argparse.Namespace) -> int:
-    from tlm.safety.snapshot import restore_snapshot
-    import subprocess
+    from tlm.safety.snapshot import list_snapshots, restore_snapshot
+    from rich.console import Console
+    from rich.table import Table
+    import sys
+    
+    console = Console()
     base = Path(ns.dir).expanduser().resolve()
     
+    snapshots = list_snapshots(base)
+    
+    if ns.list:
+        if not snapshots:
+            print("No snapshots found.")
+            return 0
+        table = Table(title=f"Snapshots in {base}")
+        table.add_column("Index", justify="right", style="cyan")
+        table.add_column("ID", style="magenta")
+        table.add_column("Type", style="green")
+        table.add_column("Message")
+        table.add_column("Date", style="blue")
+        
+        for i, s in enumerate(snapshots):
+            table.add_row(
+                str(i + 1),
+                s.id,
+                "Git" if s.is_git else "File",
+                s.message,
+                time.ctime(s.timestamp)
+            )
+        console.print(table)
+        return 0
+
     snapshot_id = ns.snapshot_id
     if not snapshot_id:
+        if not snapshots:
+            print("error: no snapshots found.", file=sys.stderr)
+            return 2
+        
+        # Interactive pick
+        print(f"Recent snapshots in {base}:")
+        for i, s in enumerate(snapshots[:10]):
+            print(f" [{i+1}] {s.id} ({'Git' if s.is_git else 'File'}) - {s.message}")
+        
         try:
-            # find latest snapshot tag
-            res = subprocess.run(["git", "tag", "--list", "tlm-snapshot-*", "--sort=-creatordate"], cwd=str(base), capture_output=True, text=True)
-            if res.returncode == 0 and res.stdout.strip():
-                snapshot_id = res.stdout.splitlines()[0].strip()
-        except FileNotFoundError:
-            pass
+            val = input("\nPick a snapshot to restore (1-10) or 'q' to quit: ").strip().lower()
+            if val == 'q' or not val:
+                return 0
+            idx = int(val) - 1
+            if 0 <= idx < len(snapshots):
+                snapshot_id = snapshots[idx].id
+            else:
+                print("Invalid choice.")
+                return 1
+        except (ValueError, EOFError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return 1
 
-    if not snapshot_id:
-        print("error: no snapshot specified and no recent tlm-snapshot-* tags found.", file=sys.stderr)
-        return 2
+    # Find the snapshot for metadata
+    target = next((s for s in snapshots if s.id == snapshot_id), None)
+    if not target:
+        print(f"error: snapshot {snapshot_id} not found.", file=sys.stderr)
+        return 1
+
+    if ns.dry_run:
+        print(f"[DRY-RUN] Would restore snapshot {snapshot_id}: {target.message}")
+        return 0
+
+    if not ns.hard:
+        confirm = input(f"Restore workspace to {snapshot_id} ({target.message})? [y/N]: ").strip().lower()
+        if confirm != 'y':
+            print("Aborted.")
+            return 0
 
     ok = restore_snapshot(base, snapshot_id)
     if ok:
-        print(f"Restored to snapshot {snapshot_id}")
+        print(f"Successfully restored to snapshot {snapshot_id}")
         return 0
     else:
         print(f"error: failed to restore snapshot {snapshot_id}", file=sys.stderr)

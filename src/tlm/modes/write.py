@@ -163,41 +163,21 @@ def run_write(
         except ValueError:
             print(f"error: invalid octal mode {extra_mode!r}, using default.")
 
-    tlm_tmp = base / ".tlm" / "tmp"
-    tlm_tmp.mkdir(parents=True, exist_ok=True)
-    staged_files: list[tuple[Path, Path, int, str]] = []
+    from tlm.safety.transaction import AtomicTransaction
     
-    try:
-        for target, contents, executable, rel, _ in resolved:
-            fd, tmp = tempfile.mkstemp(prefix="write-", dir=str(tlm_tmp), text=True)
-            os.close(fd)
-            tmp_path = Path(tmp)
-            tmp_path.write_text(contents, encoding="utf-8")
-            staged_files.append((target, tmp_path, final_mode, rel))
+    with AtomicTransaction(base) as txn:
+        try:
+            for target, contents, _, _, _ in resolved:
+                txn.stage(target, contents, final_mode)
             
-        for target, tmp_path, final_mode, rel in staged_files:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.replace(tmp_path, target)
-            except OSError as e:
-                # Fallback to copy+unlink if on different mounts
-                import shutil
-                shutil.copy2(tmp_path, target)
-                tmp_path.unlink()
-                
-            try:
-                target.chmod(final_mode)
-            except OSError as e:
-                print(f"warning: failed to chmod {rel}: {e}")
-                
-            print(f"wrote {rel} (mode {oct(final_mode)})", flush=True)
-    finally:
-        # Cleanup any un-moved staged files if we failed halfway
-        for _, tmp_path, _, _ in staged_files:
-            if tmp_path.exists():
-                try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
+            written = txn.commit()
+            for target in written:
+                rel = target.relative_to(base)
+                print(f"wrote {rel} (mode {oct(final_mode)})", flush=True)
+        except Exception as e:
+            print(f"error: transaction failed: {e}", flush=True)
+            return WriteResult(5)
+
+    return WriteResult(0)
 
     return WriteResult(0)

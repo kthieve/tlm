@@ -4,9 +4,12 @@ This directory contains elaborated plans for the major sub-version upgrades of `
 
 ## Progressive Roadmap
 
+**Current Milestone:** 🏗️ [v0.3.0: Foundation](./v0.3.0_foundation.md) (35% — 6 sprints planned)
+**Overall Stability:** 🟢 Beta (v0.2.0b1)
+
 ### Wave 1: Foundation & Stability
 1. [v0.3.0: Foundation (Safety & Streams)](./v0.3.0_foundation.md)
-   - Tiered permissions, **Temporal Snapshotting**, and **Password/Recovery Foundation**.
+   - Tiered permissions, **Temporal Snapshotting**, **Atomic Transactions**, and **Password/Recovery Foundation**.
 2. [v0.4.0: Capabilities (Abilities & Containment)](./v0.4.0_capabilities.md)
    - Source-built Integrated Abilities and non-destructive Extensions.
 
