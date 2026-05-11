@@ -81,6 +81,7 @@ class UserSettings:
     check_for_updates: bool = False
     github_repo: str | None = None  # owner/repo when not in install metadata
     auth_password_hash: str | None = None
+    auth_timeout_minutes: int = 30
     auth_recovery_hash: str | None = None
 
 

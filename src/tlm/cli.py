@@ -446,6 +446,9 @@ def cmd_new_ns(ns: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+    if getattr(ns, "dry_run", False):
+        print(f"tlm new [DRY RUN]: would create session {kw!r}")
+        return 0
     sess = new_session(keyword=kw)
     save_session(sess)
     write_last_session_id(sess.id)
@@ -539,11 +542,18 @@ def cmd_init(ns: argparse.Namespace) -> int:
     """Ensure XDG dirs exist; write default config.toml if missing."""
     from tlm.config import data_dir, sessions_dir, state_dir
 
+    p = config_file_path()
+    if getattr(ns, "dry_run", False):
+        print("tlm init [DRY RUN]:")
+        print(f"  would create/ensure dirs: {p.parent}, {data_dir()}, {sessions_dir()}, {state_dir()}")
+        if not p.is_file():
+            print(f"  would create default config: {p}")
+        return 0
+
     config_dir()
     data_dir()
     sessions_dir()
     state_dir()
-    p = config_file_path()
     created = False
     if not p.is_file():
         save_settings(UserSettings(provider="openrouter", safety_profile="standard"))
@@ -720,8 +730,12 @@ def cmd_completion(ns: argparse.Namespace) -> int:
 
 
 def authenticate_tier(target_tier: int, settings: UserSettings) -> bool:
-    """If a password is set and tier <= 1, prompt for authentication."""
+    """If a password is set and tier <= 1, prompt for authentication (persists via session token)."""
     if not settings.auth_password_hash or target_tier > 1:
+        return True
+    
+    from tlm.safety.auth_session import validate_auth_token, create_auth_token
+    if validate_auth_token():
         return True
     
     import getpass
@@ -730,6 +744,7 @@ def authenticate_tier(target_tier: int, settings: UserSettings) -> bool:
     try:
         p = getpass.getpass(f"Tier {target_tier} Access Required. Enter Password: ")
         if verify_password(p, settings.auth_password_hash):
+            create_auth_token(ttl_minutes=settings.auth_timeout_minutes)
             return True
         print("Incorrect password.", file=sys.stderr)
     except EOFError:
@@ -839,6 +854,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not run the setup wizard (also skips the optional prompt when config already exists).",
     )
+    p_init.add_argument("--dry-run", action="store_true", help="Show what would be created without writing.")
     p_init.set_defaults(_handler=cmd_init)
 
     p_cfg = sub.add_parser(
@@ -1040,6 +1056,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_new = sub.add_parser("new", help="Create a new session (one-word name); becomes active.")
     p_new.add_argument("keyword", nargs="?", default=None, help="Session keyword (prompted if omitted)")
+    p_new.add_argument("--dry-run", action="store_true", help="Show what would be created without writing.")
     p_new.set_defaults(_handler=cmd_new_ns)
 
     sub.add_parser("clear", help="Start a fresh conversation context (new active session).").set_defaults(
@@ -1053,7 +1070,10 @@ def build_parser() -> argparse.ArgumentParser:
     asub = p_auth.add_subparsers(dest="auth_cmd", required=False)
     asub.add_parser("set-password", help="Set or change the master password.")
     asub.add_parser("recover", help="Reset password using the Master Recovery Key.")
-    asub.add_parser("status", help="Show current authentication status.")
+    asub.add_parser("login", help="Authenticate and create a persistent session token.")
+    asub.add_parser("logout", help="Revoke the current session token.")
+    asub.add_parser("status", help="Show current authentication and session status.")
+    p_auth.add_argument("--dry-run", action="store_true", help="Show what would be changed without writing.")
     p_auth.set_defaults(_handler=cmd_auth_ns)
 
     p_harv = sub.add_parser(
@@ -1336,9 +1356,35 @@ def cmd_auth_ns(ns: argparse.Namespace) -> int:
         save_settings(s)
         return cmd_auth_ns(argparse.Namespace(auth_cmd="set-password"))
 
+    if cmd == "login":
+        if not s.auth_password_hash:
+            print("No password set. Use `tlm auth set-password` first.")
+            return 1
+        if authenticate_tier(0, s):
+            print("Login successful.")
+            return 0
+        return 1
+
+    if cmd == "logout":
+        from tlm.safety.auth_session import revoke_auth_token
+        revoke_auth_token()
+        print("Logged out.")
+        return 0
+
     if cmd == "status":
-        status = "Active (Password Set)" if s.auth_password_hash else "Disabled (No Password)"
+        from tlm.safety.auth_session import get_token_expiry
+        status = "Password Set" if s.auth_password_hash else "No Password"
         print(f"Auth Status: {status}")
+        
+        expiry = get_token_expiry()
+        if expiry:
+            remaining = int((expiry - time.time()) / 60)
+            if remaining > 0:
+                print(f"Session Token: Active (expires in ~{remaining}m)")
+            else:
+                print("Session Token: Expired")
+        else:
+            print("Session Token: None")
         return 0
 
     return 2
