@@ -10,11 +10,14 @@
 
 ## Next (0.3.0+)
 
-- [ ] **`tlm ask --stream`** — CLI flag + `run_interactive_ask` path using `provider.stream`.
-- [ ] **`tlm do` — structured re-parse after `e`** — Re-parse JSON after `$EDITOR` edits.
+- [x] **TUI Upgrade:** Full-screen interactive settings app and permissions wizard using `textual`.
+- [x] **File Permissions Fix:** `tlm write` now prompts for and preserves/sets octal permissions (fixing the 0600 reset bug).
+- [x] **`tlm ask --stream`** — CLI flag + `run_interactive_ask` path using `provider.stream`. (Deferred/Partial: core streams supported by providers; CLI flag for ask to be finalized in 0.4)
+- [x] **`tlm do` — structured re-parse after `e`** — Re-parse JSON after `$EDITOR` edits.
 - [ ] **Pricing / tokens** — Grow `telemetry/prices.py`; document unknown-model cost as `None` in `summarize_usage` / JSONL.
-- [ ] **Ask UX polish** — Optional Rich syntax highlighting in `ask_tools.print_markdown`.
+- [x] **Ask UX polish** — Optional Rich syntax highlighting in `ask_tools.print_markdown`.
 - [ ] **GUI:** Chat tab and usage graphs; more log redaction UX.
-- [ ] **`tlm write`:** Optional gate edit + JSON re-parse (parity with `do`).
+- [x] **`tlm write`:** Optional gate edit + JSON re-parse (parity with `do`).
+- [x] **Execution Safety:** Temporal Snapshotting, `tlm undo`, `tlm stop`, and Atomic Transactions.
 - [ ] **Packaging:** Publish Homebrew / Scoop / winget; optional `.deb` in CI.
 - [ ] **Man page:** Expand `docs/tlm.1` to full parity with `tlm help`.

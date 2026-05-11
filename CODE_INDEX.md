@@ -1,4 +1,6 @@
-# CODE_INDEX — tlm
+# CODE_INDEX — The AI Codex
+
+> **AI Instruction:** This file is the definitive map of the codebase. Whenever you need to locate logic, modify a feature, or understand the architecture, **read this Codex first** instead of blindly searching the workspace. If you create a new file or significantly alter a module's purpose during the `Document` phase of the Agile loop, you MUST update this table.
 
 | Path | Role |
 |------|------|
@@ -29,8 +31,15 @@
 | `src/tlm/safety/permissions.py` | `permissions.toml` freelist, per-project overrides |
 | `src/tlm/safety/jail.py` | Path classification (freelist / jail / escape) |
 | `src/tlm/safety/consent.py` | Jail-escape interactive consent |
+| `src/tlm/safety/auth.py` | Password protection and recovery key management |
 | `src/tlm/safety/root_guard.py` | Root / elevation guard |
 | `src/tlm/safety/sandbox.py` | Optional `bwrap` / `firejail` argv wrapper |
+| `src/tlm/safety/tools/` | Modular system tool wrappers (Tiers 0-3 enforcement) |
+| `src/tlm/safety/tools/base.py` | `ToolWrapper` abstract base class |
+| `src/tlm/safety/tools/registry.py` | Central tool registration and lookup |
+| `src/tlm/safety/tools/git.py` | Specialized 'git' permission logic |
+| `src/tlm/safety/tools/pkg_manager.py` | Generic package manager (--dry-run enforcement) |
+| `src/tlm/safety/tools/generic.py` | simple read-only tool wrappers |
 | `scripts/install.sh` | pipx / venv install from `git+https` (`TLM_GITHUB_REPO`) |
 | `scripts/update-from-clone.sh` | `git pull` + editable reinstall into pipx / `tlm-venv` / `.venv` |
 | `packaging/build_zipapp.sh` | Shiv zipapp → `dist/tlm.pyz` |

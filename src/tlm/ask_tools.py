@@ -735,127 +735,132 @@ def run_interactive_ask(
     web_consent = WebConsent(approved_keys=set(), trust_run=bool(getattr(settings, "web_auto_approve_run", False)))
     max_tool_rounds = max(2, min(32, int(settings.ask_max_tool_rounds)))
 
-    while rounds < max_tool_rounds:
-        try:
-            reply = prov.chat(msgs, system=sys_prompt)
-        except RuntimeError as e:
-            print(f"error: {e}", file=sys.stderr)
-            in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
-            return 3, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
+    try:
+        while rounds < max_tool_rounds:
+            try:
+                reply = prov.chat(msgs, system=sys_prompt)
+            except RuntimeError as e:
+                print(f"error: {e}", file=sys.stderr)
+                in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
+                return 3, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
 
-        append_assistant(sess, reply)
-        msgs.append({"role": "assistant", "content": reply})
+            append_assistant(sess, reply)
+            msgs.append({"role": "assistant", "content": reply})
 
-        visible, argvs, mem_ops, web_ops = split_reply_tools(reply)
-        mem_fb = _mem_feedback(mem_ops) if (memory_on and mem_ops) else ""
+            visible, argvs, mem_ops, web_ops = split_reply_tools(reply)
+            mem_fb = _mem_feedback(mem_ops) if (memory_on and mem_ops) else ""
 
-        tty = sys.stdin.isatty()
-        exec_wanted = bool(tools and argvs)
-        web_wanted = bool(web and web_ops)
+            tty = sys.stdin.isatty()
+            exec_wanted = bool(tools and argvs)
+            web_wanted = bool(web and web_ops)
 
-        feedback_parts: list[str] = []
-        if mem_fb:
-            feedback_parts.append(mem_fb)
+            feedback_parts: list[str] = []
+            if mem_fb:
+                feedback_parts.append(mem_fb)
 
-        non_tty_blocks = (exec_wanted or web_wanted) and not tty
-        if non_tty_blocks and not mem_fb:
-            notes: list[str] = []
-            if exec_wanted:
-                notes.append(shell_skip_note)
-            if web_wanted:
-                notes.append(web_skip_note)
-            note = "\n\n".join(notes)
-            print_markdown((visible if visible.strip() else reply) + ("\n\n" + note if note else ""))
+            non_tty_blocks = (exec_wanted or web_wanted) and not tty
+            if non_tty_blocks and not mem_fb:
+                notes: list[str] = []
+                if exec_wanted:
+                    notes.append(shell_skip_note)
+                if web_wanted:
+                    notes.append(web_skip_note)
+                note = "\n\n".join(notes)
+                print_markdown((visible if visible.strip() else reply) + ("\n\n" + note if note else ""))
+                in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
+                return 0, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
+
+            if exec_wanted and not tty:
+                feedback_parts.append(shell_skip_note)
+            if web_wanted and not tty:
+                feedback_parts.append(web_skip_note)
+
+            pcon, RichPanel, RichConfirm = _rich_prompt_kit()
+            use_rich = pcon is not None and RichPanel is not None and RichConfirm is not None
+
+            printed_visible_for_tools = False
+            if tty and exec_wanted and visible.strip():
+                print_markdown(visible)
+                printed_visible_for_tools = True
+
+            if tty and exec_wanted:
+                exec_parts: list[str] = []
+                for argv in argvs:
+                    ok, reason = check_argv(argv)
+                    if not ok:
+                        exec_parts.append(f"Blocked {argv!r}: {reason}")
+                        continue
+                    cmd_line = " ".join(argv)
+                    if cmd_line in previously_ran_cmds and not machine_diag_needed:
+                        exec_parts.append(
+                            f"Skipped repeated command from older topic: {cmd_line} "
+                            "(use `tlm clear` / `tlm new` for a fresh context)"
+                        )
+                        continue
+                    if use_rich:
+                        pcon.print(RichPanel(cmd_line, title="Proposed command", border_style="yellow"))
+                        run = RichConfirm.ask("Execute on your machine?", default=False, console=pcon)
+                    else:
+                        print(f"\nProposed: {cmd_line}", file=sys.stderr, flush=True)
+                        run = input("Execute? [y/N]: ").strip().lower() in ("y", "yes")
+                    if not run:
+                        exec_parts.append(f"User declined: {cmd_line}")
+                        continue
+                    try:
+                        _code, body = _run_argv(argv, timeout=timeout)
+                        exec_parts.append(f"$ {cmd_line}\n{body}")
+                        previously_ran_cmds.add(cmd_line)
+                    except subprocess.TimeoutExpired:
+                        exec_parts.append(f"$ {cmd_line}\n(error: timeout after {timeout}s)")
+                    except OSError as e:
+                        exec_parts.append(f"$ {cmd_line}\n(error: {e})")
+
+                feedback_parts.append("\n\n".join(exec_parts) if exec_parts else "(no commands run)")
+
+            if tty and web_wanted:
+                if not printed_visible_for_tools and visible.strip():
+                    print_markdown(visible)
+                if not web:
+                    feedback_parts.append("*(tlm-web: disabled for this run via `--no-web`.)*")
+                elif not settings.web_enabled:
+                    feedback_parts.append(
+                        "*(tlm-web: set `web_enabled = true` in config.toml and install Lightpanda "
+                        "(https://github.com/lightpanda-io/browser).)*"
+                    )
+                elif not lp_bin:
+                    feedback_parts.append(
+                        "*(tlm-web: install `lightpanda` or set `lightpanda_path` in config.toml "
+                        "(https://github.com/lightpanda-io/browser).)*"
+                    )
+                else:
+                    web_parts = _run_web_ops_interactive(
+                        web_ops,
+                        settings=settings,
+                        bin_path=lp_bin,
+                        timeout=timeout,
+                        pcon=pcon,
+                        RichPanel=RichPanel,
+                        RichConfirm=RichConfirm,
+                        use_rich=use_rich,
+                        web_consent=web_consent,
+                        assistant_visible=visible,
+                    )
+                    feedback_parts.append("\n\n".join(web_parts) if web_parts else "(no web fetches run)")
+
+            if feedback_parts:
+                combined = "\n\n".join(p for p in feedback_parts if p)
+                append_user(sess, combined)
+                msgs.append({"role": "user", "content": combined})
+                rounds += 1
+                continue
+
+            print_markdown(visible if visible.strip() else reply)
             in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
             return 0, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
-
-        if exec_wanted and not tty:
-            feedback_parts.append(shell_skip_note)
-        if web_wanted and not tty:
-            feedback_parts.append(web_skip_note)
-
-        pcon, RichPanel, RichConfirm = _rich_prompt_kit()
-        use_rich = pcon is not None and RichPanel is not None and RichConfirm is not None
-
-        printed_visible_for_tools = False
-        if tty and exec_wanted and visible.strip():
-            print_markdown(visible)
-            printed_visible_for_tools = True
-
-        if tty and exec_wanted:
-            exec_parts: list[str] = []
-            for argv in argvs:
-                ok, reason = check_argv(argv)
-                if not ok:
-                    exec_parts.append(f"Blocked {argv!r}: {reason}")
-                    continue
-                cmd_line = " ".join(argv)
-                if cmd_line in previously_ran_cmds and not machine_diag_needed:
-                    exec_parts.append(
-                        f"Skipped repeated command from older topic: {cmd_line} "
-                        "(use `tlm clear` / `tlm new` for a fresh context)"
-                    )
-                    continue
-                if use_rich:
-                    pcon.print(RichPanel(cmd_line, title="Proposed command", border_style="yellow"))
-                    run = RichConfirm.ask("Execute on your machine?", default=False, console=pcon)
-                else:
-                    print(f"\nProposed: {cmd_line}", file=sys.stderr, flush=True)
-                    run = input("Execute? [y/N]: ").strip().lower() in ("y", "yes")
-                if not run:
-                    exec_parts.append(f"User declined: {cmd_line}")
-                    continue
-                try:
-                    _code, body = _run_argv(argv, timeout=timeout)
-                    exec_parts.append(f"$ {cmd_line}\n{body}")
-                    previously_ran_cmds.add(cmd_line)
-                except subprocess.TimeoutExpired:
-                    exec_parts.append(f"$ {cmd_line}\n(error: timeout after {timeout}s)")
-                except OSError as e:
-                    exec_parts.append(f"$ {cmd_line}\n(error: {e})")
-
-            feedback_parts.append("\n\n".join(exec_parts) if exec_parts else "(no commands run)")
-
-        if tty and web_wanted:
-            if not printed_visible_for_tools and visible.strip():
-                print_markdown(visible)
-            if not web:
-                feedback_parts.append("*(tlm-web: disabled for this run via `--no-web`.)*")
-            elif not settings.web_enabled:
-                feedback_parts.append(
-                    "*(tlm-web: set `web_enabled = true` in config.toml and install Lightpanda "
-                    "(https://github.com/lightpanda-io/browser).)*"
-                )
-            elif not lp_bin:
-                feedback_parts.append(
-                    "*(tlm-web: install `lightpanda` or set `lightpanda_path` in config.toml "
-                    "(https://github.com/lightpanda-io/browser).)*"
-                )
-            else:
-                web_parts = _run_web_ops_interactive(
-                    web_ops,
-                    settings=settings,
-                    bin_path=lp_bin,
-                    timeout=timeout,
-                    pcon=pcon,
-                    RichPanel=RichPanel,
-                    RichConfirm=RichConfirm,
-                    use_rich=use_rich,
-                    web_consent=web_consent,
-                    assistant_visible=visible,
-                )
-                feedback_parts.append("\n\n".join(web_parts) if web_parts else "(no web fetches run)")
-
-        if feedback_parts:
-            combined = "\n\n".join(p for p in feedback_parts if p)
-            append_user(sess, combined)
-            msgs.append({"role": "user", "content": combined})
-            rounds += 1
-            continue
-
-        print_markdown(visible if visible.strip() else reply)
+    except KeyboardInterrupt:
+        print("\ninterrupted.", file=sys.stderr)
         in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
-        return 0, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
+        return 1, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
 
     print(
         f"error: too many tool rounds (limit {max_tool_rounds}; set `ask_max_tool_rounds` in config.toml, max 32)",

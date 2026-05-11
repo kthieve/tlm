@@ -54,6 +54,7 @@ class EffectivePolicy:
     escape_grants: list[str]
     cwd: Path
     project_root: Path | None  # matched [[project]].root or git toplevel
+    tier: int = 1  # Tier 0: Root, 1: Workspace, 2: Whitelist, 3: Sandbox
 
 
 def _toml_escape_str(s: str) -> str:

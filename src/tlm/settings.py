@@ -80,6 +80,8 @@ class UserSettings:
     # GitHub release hint (stderr); disable with TLM_NO_UPDATE_CHECK=1.
     check_for_updates: bool = False
     github_repo: str | None = None  # owner/repo when not in install metadata
+    auth_password_hash: str | None = None
+    auth_recovery_hash: str | None = None
 
 
 def _toml_escape_str(s: str) -> str:
@@ -129,6 +131,10 @@ def save_settings(s: UserSettings) -> None:
     lines.append(f"check_for_updates = {str(bool(s.check_for_updates)).lower()}")
     if s.github_repo is not None:
         lines.append(f"github_repo = {_toml_escape_str(s.github_repo)}")
+    if s.auth_password_hash is not None:
+        lines.append(f"auth_password_hash = {_toml_escape_str(s.auth_password_hash)}")
+    if s.auth_recovery_hash is not None:
+        lines.append(f"auth_recovery_hash = {_toml_escape_str(s.auth_recovery_hash)}")
     if s.models:
         lines.append("")
         lines.append("[models]")
@@ -197,6 +203,8 @@ def load_settings() -> UserSettings:
         web_check_lightpanda_updates=_bool("web_check_lightpanda_updates", False),
         check_for_updates=_bool("check_for_updates", False),
         github_repo=data.get("github_repo") if isinstance(data.get("github_repo"), str) else None,
+        auth_password_hash=data.get("auth_password_hash") if isinstance(data.get("auth_password_hash"), str) else None,
+        auth_recovery_hash=data.get("auth_recovery_hash") if isinstance(data.get("auth_recovery_hash"), str) else None,
     )
 
 

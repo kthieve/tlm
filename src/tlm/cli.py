@@ -71,6 +71,9 @@ KNOWN_SUBCOMMANDS = frozenset(
         "unallow",
         "update",
         "models",
+        "auth",
+        "undo",
+        "stop",
     }
 )
 
@@ -595,9 +598,14 @@ def cmd_config_route(ns: argparse.Namespace) -> int:
         return run_gui_safe()
     if getattr(ns, "config_cmd", None) == "migrate-keys":
         return cmd_migrate_keys()
-    from tlm.tui_config import run_config_tui
-
-    return run_config_tui()
+    
+    try:
+        from tlm.tui.app import run_tui_app
+        return run_tui_app()
+    except (ImportError, Exception):
+        # Fallback to simple TUI if textual is missing or fails
+        from tlm.tui_config import run_config_tui
+        return run_config_tui()
 
 
 def cmd_migrate_keys() -> int:
@@ -662,6 +670,12 @@ def cmd_allow_ns(ns: argparse.Namespace) -> int:
 
     from tlm.safety.permissions import add_freelist_path
 
+    if getattr(ns, "dry_run", False):
+        kind = "RO" if bool(ns.read_only) else "RW"
+        scope = f"project:{ns.project_root or '.'}" if bool(ns.project) else "global"
+        print(f"(dry-run) would add {kind} path {ns.path} to {scope} permissions.")
+        return 0
+
     add_freelist_path(
         ns.path,
         read_only=bool(ns.read_only),
@@ -676,6 +690,11 @@ def cmd_unallow_ns(ns: argparse.Namespace) -> int:
     from pathlib import Path
 
     from tlm.safety.permissions import remove_freelist_path
+
+    if getattr(ns, "dry_run", False):
+        scope = f"project:{ns.project_root or '.'}" if bool(ns.project) else "global"
+        print(f"(dry-run) would remove path {ns.path} from {scope} permissions.")
+        return 0
 
     ok = remove_freelist_path(
         ns.path,
@@ -698,6 +717,25 @@ def cmd_completion(ns: argparse.Namespace) -> int:
     return 0
 
 
+def authenticate_tier(target_tier: int, settings: UserSettings) -> bool:
+    """If a password is set and tier <= 1, prompt for authentication."""
+    if not settings.auth_password_hash or target_tier > 1:
+        return True
+    
+    import getpass
+    from tlm.safety.auth import verify_password
+    
+    try:
+        p = getpass.getpass(f"Tier {target_tier} Access Required. Enter Password: ")
+        if verify_password(p, settings.auth_password_hash):
+            return True
+        print("Incorrect password.", file=sys.stderr)
+    except EOFError:
+        print("\nAuthentication required.", file=sys.stderr)
+        
+    return False
+
+
 def cmd_write_ns(ns: argparse.Namespace) -> int:
     text = " ".join(ns.text).strip()
     blob = read_stdin_blob()
@@ -711,6 +749,12 @@ def cmd_write_ns(ns: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+    
+    from tlm.safety.profiles import normalize_profile
+    profile = normalize_profile(settings.safety_profile)
+    if not authenticate_tier(profile.tier, settings):
+        return 1
+
     base = Path(ns.dir).expanduser().resolve()
     r = run_write(
         text,
@@ -719,6 +763,7 @@ def cmd_write_ns(ns: argparse.Namespace) -> int:
         overwrite=bool(ns.overwrite),
         dry_run=bool(ns.dry_run),
         auto_yes=bool(ns.yes),
+        settings=settings,
     )
     return r.exit_code
 
@@ -736,6 +781,12 @@ def cmd_do_ns(ns: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+
+    from tlm.safety.profiles import normalize_profile
+    profile = normalize_profile(settings.safety_profile)
+    if not authenticate_tier(profile.tier, settings):
+        return 1
+
     cwd = Path(ns.cwd).expanduser().resolve()
     r = run_do(
         text,
@@ -993,6 +1044,16 @@ def build_parser() -> argparse.ArgumentParser:
         _handler=lambda _: cmd_new_context()
     )
 
+    p_auth = sub.add_parser(
+        "auth",
+        help="Manage password protection and recovery keys for sensitive Tiers.",
+    )
+    asub = p_auth.add_subparsers(dest="auth_cmd", required=False)
+    asub.add_parser("set-password", help="Set or change the master password.")
+    asub.add_parser("recover", help="Reset password using the Master Recovery Key.")
+    asub.add_parser("status", help="Show current authentication status.")
+    p_auth.set_defaults(_handler=cmd_auth_ns)
+
     p_harv = sub.add_parser(
         "harvest",
         help="Extract durable facts from session(s) into long-term memory.",
@@ -1020,12 +1081,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_allow.add_argument("--read-only", action="store_true", help="Read-only freelist")
     p_allow.add_argument("--project", action="store_true", help="Scope to current project root")
     p_allow.add_argument("--project-root", metavar="DIR", default=None, help="Explicit project root")
+    p_allow.add_argument("--dry-run", action="store_true", help="Show what would be added without writing")
     p_allow.set_defaults(_handler=cmd_allow_ns)
 
     p_un = sub.add_parser("unallow", help="Remove a path from freelist or escape_grants.")
     p_un.add_argument("path")
     p_un.add_argument("--project", action="store_true")
     p_un.add_argument("--project-root", metavar="DIR", default=None)
+    p_un.add_argument("--dry-run", action="store_true", help="Show what would be removed without writing")
     p_un.set_defaults(_handler=cmd_unallow_ns)
 
     p_upd = sub.add_parser(
@@ -1053,6 +1116,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_upd.set_defaults(_handler=lambda a: cmd_update_ns(a, load_settings()))
 
+    p_undo = sub.add_parser("undo", help="Revert the workspace to a previous snapshot.")
+    p_undo.add_argument("snapshot_id", nargs="?", help="Specific snapshot ID (e.g. tlm-snapshot-123). If omitted, attempts to restore the most recent snapshot.")
+    p_undo.add_argument("--dir", default=".", help="Base directory of the workspace")
+    p_undo.set_defaults(_handler=cmd_undo_ns)
+
+    p_stop = sub.add_parser("stop", help="Hard-kill runaway processes and clean up temporary stages.")
+    p_stop.add_argument("--dir", default=".", help="Base directory of the workspace")
+    p_stop.set_defaults(_handler=cmd_stop_ns)
+
     return p
 
 
@@ -1074,6 +1146,117 @@ def run_gui_safe() -> int:
     return 0
 
 
+def cmd_undo_ns(ns: argparse.Namespace) -> int:
+    from tlm.safety.snapshot import restore_snapshot
+    import subprocess
+    base = Path(ns.dir).expanduser().resolve()
+    
+    snapshot_id = ns.snapshot_id
+    if not snapshot_id:
+        try:
+            # find latest snapshot tag
+            res = subprocess.run(["git", "tag", "--list", "tlm-snapshot-*", "--sort=-creatordate"], cwd=str(base), capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout.strip():
+                snapshot_id = res.stdout.splitlines()[0].strip()
+        except FileNotFoundError:
+            pass
+
+    if not snapshot_id:
+        print("error: no snapshot specified and no recent tlm-snapshot-* tags found.", file=sys.stderr)
+        return 2
+
+    ok = restore_snapshot(base, snapshot_id)
+    if ok:
+        print(f"Restored to snapshot {snapshot_id}")
+        return 0
+    else:
+        print(f"error: failed to restore snapshot {snapshot_id}", file=sys.stderr)
+        return 1
+
+
+def cmd_stop_ns(ns: argparse.Namespace) -> int:
+    """Hard-kill runaway processes and clean up temporary stages."""
+    import signal
+    import os
+    import shutil
+    base = Path(ns.dir).expanduser().resolve()
+    tlm_tmp = base / ".tlm" / "tmp"
+    
+    pgid_file = tlm_tmp / "last_run.pgid"
+    if pgid_file.exists():
+        try:
+            pgid = int(pgid_file.read_text().strip())
+            print(f"Stopping process group {pgid}...")
+            os.killpg(pgid, signal.SIGKILL)
+            pgid_file.unlink()
+        except (ValueError, OSError) as e:
+            print(f"warning: failed to kill process group: {e}")
+    
+    if tlm_tmp.exists():
+        print(f"Cleaning up {tlm_tmp}...")
+        try:
+            shutil.rmtree(tlm_tmp)
+            tlm_tmp.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            print(f"error: failed to clean up {tlm_tmp}: {e}")
+            return 1
+            
+    print("Stopped and cleaned.")
+    return 0
+
+
+def cmd_auth_ns(ns: argparse.Namespace) -> int:
+    import getpass
+    from tlm.safety.auth import (
+        hash_password,
+        verify_password,
+        generate_recovery_key,
+        hash_recovery_key,
+        verify_recovery_key,
+    )
+    from tlm.settings import load_settings, save_settings
+
+    cmd = getattr(ns, "auth_cmd", None)
+    s = load_settings()
+
+    if cmd == "set-password":
+        p1 = getpass.getpass("Enter new password: ")
+        if not p1:
+            print("Password cannot be empty.")
+            return 2
+        p2 = getpass.getpass("Confirm password: ")
+        if p1 != p2:
+            print("Passwords do not match.")
+            return 2
+        
+        s.auth_password_hash = hash_password(p1)
+        rk = generate_recovery_key()
+        s.auth_recovery_hash = hash_recovery_key(rk)
+        save_settings(s)
+        print("\nPassword set successfully.")
+        print(f"MASTER RECOVERY KEY: {rk}")
+        print("STORE THIS KEY OFFLINE. It is the only way to reset your password if lost.")
+        return 0
+
+    if cmd == "recover":
+        key = input("Enter Master Recovery Key: ").strip()
+        if not s.auth_recovery_hash or not verify_recovery_key(key, s.auth_recovery_hash):
+            print("Invalid recovery key.")
+            return 1
+        
+        print("Recovery successful. Please set a new password.")
+        s.auth_password_hash = None  # temporary unlock
+        save_settings(s)
+        return cmd_auth_ns(argparse.Namespace(auth_cmd="set-password"))
+
+    if cmd == "status":
+        status = "Active (Password Set)" if s.auth_password_hash else "Disabled (No Password)"
+        print(f"Auth Status: {status}")
+        return 0
+
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     warn_config_permissions()
@@ -1091,35 +1274,43 @@ def main(argv: list[str] | None = None) -> int:
 
     # Natural language: `tlm show me which cpu` → ask (first token not a known subcommand).
     if argv[0] not in KNOWN_SUBCOMMANDS and not argv[0].startswith("-"):
-        return cmd_ask(
-            " ".join(argv).strip(),
-            session_spec=None,
-            provider=None,
-            new=False,
-            last=False,
-            budget=8000,
-            tools=True,
-            web=True,
-            clear_context=False,
-            new_keyword=None,
-            web_focus=False,
-        )
+        try:
+            return cmd_ask(
+                " ".join(argv).strip(),
+                session_spec=None,
+                provider=None,
+                new=False,
+                last=False,
+                budget=8000,
+                tools=True,
+                web=True,
+                clear_context=False,
+                new_keyword=None,
+                web_focus=False,
+            )
+        except KeyboardInterrupt:
+            print("\ninterrupted.", file=sys.stderr)
+            return 1
 
     if argv[0] == "?":
         opts, text = parse_ask_tokens(argv[1:])
-        return cmd_ask(
-            text,
-            session_spec=opts["session"],
-            provider=opts["provider"],
-            new=opts["new"],
-            last=opts["last"],
-            budget=int(opts["budget"]),
-            tools=opts.get("tools", True),
-            web=opts.get("web", True),
-            clear_context=bool(opts.get("clear_context", False)),
-            new_keyword=opts.get("keyword"),
-            web_focus=False,
-        )
+        try:
+            return cmd_ask(
+                text,
+                session_spec=opts["session"],
+                provider=opts["provider"],
+                new=opts["new"],
+                last=opts["last"],
+                budget=int(opts["budget"]),
+                tools=opts.get("tools", True),
+                web=opts.get("web", True),
+                clear_context=bool(opts.get("clear_context", False)),
+                new_keyword=opts.get("keyword"),
+                web_focus=False,
+            )
+        except KeyboardInterrupt:
+            print("\ninterrupted.", file=sys.stderr)
+            return 1
 
     args = parser.parse_args(argv)
     if getattr(args, "cmd", None) is None:
@@ -1129,7 +1320,12 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 2
-    return int(handler(args))
+
+    try:
+        return int(handler(args))
+    except KeyboardInterrupt:
+        print("\ninterrupted.", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

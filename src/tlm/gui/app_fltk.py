@@ -191,11 +191,11 @@ def run_gui_fltk() -> None:
             gp.begin()
             Fl_Box(20, 60, 120, 24, "Safety profile")
             self.prof = Fl_Choice(150, 58, 200, 24)
-            for p in ("strict", "standard", "trusted"):
+            for p in ("strict", "standard", "trusted", "sandbox"):
                 self.prof.add(p)
             prof = load_settings().safety_profile
             try:
-                self.prof.value(("strict", "standard", "trusted").index(prof))
+                self.prof.value(("strict", "standard", "trusted", "sandbox").index(prof))
             except ValueError:
                 self.prof.value(1)
             ps = Fl_Button(150, 100, 100, 28, "Save")
@@ -492,9 +492,9 @@ def run_gui_fltk() -> None:
 
         def _save_profile(self, *_a: object) -> None:
             s = load_settings()
-            labels = ("strict", "standard", "trusted")
+            labels = ("strict", "standard", "trusted", "sandbox")
             i = int(self.prof.value())
-            s.safety_profile = labels[i] if 0 <= i < 3 else "standard"
+            s.safety_profile = labels[i] if 0 <= i < len(labels) else "standard"
             save_settings(s)
             fl_alert("tlm: Saved safety profile.")
 

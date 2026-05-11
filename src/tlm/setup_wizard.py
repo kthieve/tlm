@@ -136,10 +136,11 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
             s.model = mv
 
         sp = (s.safety_profile or "standard").strip().lower()
-        if sp not in ("strict", "standard", "trusted"):
+        profiles = ("strict", "standard", "trusted", "sandbox")
+        if sp not in profiles:
             sp = "standard"
-        v5 = input(f"Safety profile strict|standard|trusted [{sp}]: ").strip().lower()
-        if v5 in ("strict", "standard", "trusted"):
+        v5 = input(f"Safety profile strict|standard|trusted|sandbox [{sp}]: ").strip().lower()
+        if v5 in profiles:
             s.safety_profile = v5
         else:
             s.safety_profile = sp

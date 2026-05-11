@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from tlm.safety.root_guard import (
 )
 from tlm.safety import sandbox
 from tlm.safety.shell import argv_uses_network_tool
+from tlm.safety.tools import get_tool_wrapper
 from tlm.settings import UserSettings, load_settings
 
 
@@ -195,6 +197,15 @@ def run_do(
             print(f"safety: {reason}\n  argv={argv}")
             return DoResult(4)
 
+        # Modular tool validation
+        name = argv[0].split("/")[-1]
+        wrapper = get_tool_wrapper(name)
+        if wrapper:
+            ok_tool, msg_tool = wrapper.validate(argv)
+            if not ok_tool:
+                print(f"safety: {name} tool policy: {msg_tool or 'blocked'}\n  argv={argv}")
+                return DoResult(4)
+
     lines = ["--- proposed execution ---"]
     for i, c in enumerate(commands, 1):
         lines.append(f"{i}. argv={c['argv']!r}")
@@ -206,7 +217,7 @@ def run_do(
 
     can_yes = allow_do_auto_yes(profile, argvs)
     try:
-        dec, _ = interactive_gate_string(
+        dec, _, _ = interactive_gate_string(
             preview,
             allow_edit=True,
             dry_run=dry_run,
@@ -222,6 +233,12 @@ def run_do(
     if dec == "dry":
         print("(dry-run) not executed.")
         return DoResult(0)
+
+    if profile in (SafetyProfile.standard, SafetyProfile.strict):
+        from tlm.safety.snapshot import create_snapshot
+        sid = create_snapshot(cwd)
+        if sid:
+            print(f"snapshot created: {sid}", flush=True)
 
     base_env = os.environ.copy()
     extra: dict[str, str] = {}
@@ -240,24 +257,50 @@ def run_do(
         wrapped = sandbox.wrap_argv(argv, cwd=use_cwd, policy=ep, unshare_net=unshare_net)
         print(f"\n--- running {i}/{len(commands)}: {argv_to_line(argv)} ---", flush=True)
         try:
-            proc = subprocess.run(  # noqa: S603
+            # use start_new_session=True to create a new process group (os.setsid on Unix)
+            proc = subprocess.Popen(  # noqa: S603
                 wrapped,
                 cwd=str(use_cwd),
                 env=env,
-                timeout=timeout,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
                 shell=False,
+                start_new_session=True,
             )
-        except subprocess.TimeoutExpired:
-            print(f"error: timeout after {timeout}s")
+            
+            # Record PGID for tlm stop
+            tlm_tmp = cwd / ".tlm" / "tmp"
+            tlm_tmp.mkdir(parents=True, exist_ok=True)
+            pgid_file = tlm_tmp / "last_run.pgid"
+            try:
+                pgid_file.write_text(str(os.getpgid(proc.pid)))
+            except OSError:
+                pass
+
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except (subprocess.TimeoutExpired, KeyboardInterrupt) as e:
+                # terminate the whole process group
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except OSError:
+                    pass
+                if isinstance(e, KeyboardInterrupt):
+                    print("\ninterrupted.", file=sys.stderr)
+                    return DoResult(1)
+                print(f"error: timeout after {timeout}s", file=sys.stderr)
+                return DoResult(3)
+
+            if stdout:
+                print(stdout, end="" if stdout.endswith("\n") else "\n")
+            if stderr:
+                print(stderr, end="" if stderr.endswith("\n") else "\n", file=sys.stderr)
+            if proc.returncode != 0:
+                print(f"exit code: {proc.returncode}")
+                if not continue_on_error:
+                    return DoResult(proc.returncode)
+        except OSError as e:
+            print(f"error: failed to start command: {e}", file=sys.stderr)
             return DoResult(3)
-        if proc.stdout:
-            print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n")
-        if proc.stderr:
-            print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
-        if proc.returncode != 0:
-            print(f"exit code: {proc.returncode}")
-            if not continue_on_error:
-                return DoResult(proc.returncode)
     return DoResult(0)

@@ -76,6 +76,7 @@ def run_write(
     overwrite: bool,
     dry_run: bool,
     auto_yes: bool,
+    settings: Any = None,
 ) -> WriteResult:
     try:
         raw_text = provider.complete(user_text, system=_WRITE_SYSTEM)
@@ -92,7 +93,7 @@ def run_write(
     base.mkdir(parents=True, exist_ok=True)
 
     previews: list[str] = []
-    resolved: list[tuple[Path, str, bool, str]] = []  # path, contents, exec, rel
+    resolved: list[tuple[Path, str, bool, str, int]] = []  # path, contents, exec, rel, mode
     for spec in files:
         rel = spec["path"]
         target = (base / rel).resolve()
@@ -100,27 +101,41 @@ def run_write(
             print(f"error: path escapes base dir: {rel!r}")
             return WriteResult(4)
         old = ""
+        current_mode = 0o644
         if target.is_file():
             old = target.read_text(encoding="utf-8")
+            current_mode = target.stat().st_mode & 0o777
         elif target.exists():
             print(f"error: exists but is not a file: {rel!r}")
             return WriteResult(4)
+        else:
+            # new file
+            if spec["executable"]:
+                current_mode = 0o755
+
         diff = _diff_text(rel, old, spec["contents"]) if old else f"(new file {rel}, {len(spec['contents'])} bytes)\n"
         previews.append(diff)
-        resolved.append((target, spec["contents"], spec["executable"], rel))
+        resolved.append((target, spec["contents"], spec["executable"], rel, current_mode))
 
-    for t, _, _, rel in resolved:
+    for t, _, _, rel, _ in resolved:
         if t.exists() and not overwrite:
             print(f"error: file exists and --overwrite not set: {rel!r}")
             return WriteResult(4)
 
+    # For multi-file writes, we use the mode of the first file as the baseline for the prompt
+    # or just ask for a global mode override if desired. For simplicity, we'll prompt for
+    # the mode of the first file if there's only one, or just a general "target mode".
+    # In a more complex version, we could have per-file modes in the JSON.
+    initial_mode_str = oct(resolved[0][4])[2:] if resolved else "644"
+
     body = "\n".join(["--- proposed writes ---", *previews])
-    dec, _ = interactive_gate_string(
+    dec, _, extra_mode = interactive_gate_string(
         body,
         allow_edit=False,
         dry_run=dry_run,
         auto_yes=auto_yes,
         can_auto_yes=True,  # write: --yes allowed after preview (plan)
+        extra_prompt=f"Target octal permissions (default {initial_mode_str})",
     )
     if dec == "cancel":
         print("cancelled.")
@@ -129,23 +144,60 @@ def run_write(
         print("(dry-run) not written.")
         return WriteResult(0)
 
-    for target, contents, executable, rel in resolved:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=".tlm-", dir=str(target.parent), text=True)
-        os.close(fd)
-        tmp_path = Path(tmp)
+    from tlm.settings import load_settings
+    from tlm.safety.profiles import SafetyProfile, normalize_profile
+    from tlm.safety.snapshot import create_snapshot
+    
+    s = settings or load_settings()
+    profile = normalize_profile(s.safety_profile)
+    
+    if profile in (SafetyProfile.standard, SafetyProfile.strict):
+        sid = create_snapshot(base)
+        if sid:
+            print(f"snapshot created: {sid}", flush=True)
+
+    final_mode = resolved[0][4]
+    if extra_mode:
         try:
+            final_mode = int(extra_mode, 8)
+        except ValueError:
+            print(f"error: invalid octal mode {extra_mode!r}, using default.")
+
+    tlm_tmp = base / ".tlm" / "tmp"
+    tlm_tmp.mkdir(parents=True, exist_ok=True)
+    staged_files: list[tuple[Path, Path, int, str]] = []
+    
+    try:
+        for target, contents, executable, rel, _ in resolved:
+            fd, tmp = tempfile.mkstemp(prefix="write-", dir=str(tlm_tmp), text=True)
+            os.close(fd)
+            tmp_path = Path(tmp)
             tmp_path.write_text(contents, encoding="utf-8")
-            os.replace(tmp_path, target)
-        except OSError:
+            staged_files.append((target, tmp_path, final_mode, rel))
+            
+        for target, tmp_path, final_mode, rel in staged_files:
+            target.parent.mkdir(parents=True, exist_ok=True)
             try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            raise
-        if executable:
-            mode = target.stat().st_mode
-            target.chmod(mode | 0o111)
-        print(f"wrote {rel}", flush=True)
+                os.replace(tmp_path, target)
+            except OSError as e:
+                # Fallback to copy+unlink if on different mounts
+                import shutil
+                shutil.copy2(tmp_path, target)
+                tmp_path.unlink()
+                
+            try:
+                target.chmod(final_mode)
+            except OSError as e:
+                print(f"warning: failed to chmod {rel}: {e}")
+                
+            print(f"wrote {rel} (mode {oct(final_mode)})", flush=True)
+    finally:
+        # Cleanup any un-moved staged files if we failed halfway
+        for _, tmp_path, _, _ in staged_files:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
 
     return WriteResult(0)

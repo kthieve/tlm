@@ -11,6 +11,9 @@ import re
 import shlex
 from pathlib import Path
 
+from tlm.safety.tools import get_tool_wrapper
+
+
 _DENY_RES = [
     re.compile(r"\brm\s+-rf\b", re.I),
     re.compile(r"\bmkfs\b", re.I),
@@ -28,8 +31,6 @@ _DENY_RES = [
     re.compile(r"[>|]\s*/sys/", re.I),
     re.compile(r"[>|]\s*/proc/", re.I),
 ]
-
-_PKG_MANAGERS = frozenset({"apt", "apt-get", "dnf", "yum", "pacman", "zypper", "apk"})
 
 # Network-capable tools (first argv segment basename).
 _NETWORK_TOOLS = frozenset(
@@ -92,9 +93,15 @@ def check_argv(argv: list[str]) -> tuple[bool, str]:
     ok, reason = check_command_line(line)
     if not ok:
         return ok, reason
+    
+    # Modular tool validation
     cmd = argv[0].split("/")[-1]
-    if cmd in _PKG_MANAGERS and "--dry-run" not in argv and "-s" not in argv:
-        return False, "package manager without --dry-run (or -s) is blocked"
+    wrapper = get_tool_wrapper(cmd)
+    if wrapper:
+        ok_tool, reason_tool = wrapper.validate(argv)
+        if not ok_tool:
+            return False, f"{cmd} tool policy: {reason_tool or 'blocked'}"
+            
     return True, ""
 
 

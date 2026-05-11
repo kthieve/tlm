@@ -720,7 +720,7 @@ def run_gui() -> None:
     lf_prof.grid(row=1, column=0, sticky="ew", pady=(0, 8))
     prof_var = tk.StringVar(value=load_settings().safety_profile)
     ttk.Label(lf_prof, text="Profile").grid(row=0, column=0, sticky="w", padx=(0, 12))
-    prof = ttk.Combobox(lf_prof, textvariable=prof_var, values=["strict", "standard", "trusted"], width=22)
+    prof = ttk.Combobox(lf_prof, textvariable=prof_var, values=["strict", "standard", "trusted", "sandbox"], width=22)
     prof.grid(row=0, column=1, sticky="w")
     rp = normalize_profile(prof_var.get())
     root_note = (
