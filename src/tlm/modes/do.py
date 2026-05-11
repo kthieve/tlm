@@ -269,15 +269,9 @@ def run_do(
                 start_new_session=True,
             )
             
-            # Record PGID for tlm stop
-            tlm_tmp = cwd / ".tlm" / "tmp"
-            tlm_tmp.mkdir(parents=True, exist_ok=True)
-            pgid_file = tlm_tmp / "last_run.pgid"
-            try:
-                pgid_file.write_text(str(os.getpgid(proc.pid)))
-            except OSError:
-                pass
-
+            from tlm.safety.proctrack import register_process, unregister_process
+            proc_id = register_process(cwd, proc.pid, os.getpgid(proc.pid), argv)
+            
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
             except (subprocess.TimeoutExpired, KeyboardInterrupt) as e:
@@ -291,6 +285,8 @@ def run_do(
                     return DoResult(1)
                 print(f"error: timeout after {timeout}s", file=sys.stderr)
                 return DoResult(3)
+            finally:
+                unregister_process(cwd, proc_id)
 
             if stdout:
                 print(stdout, end="" if stdout.endswith("\n") else "\n")

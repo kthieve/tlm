@@ -1128,6 +1128,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_stop = sub.add_parser("stop", help="Hard-kill runaway processes and clean up temporary stages.")
     p_stop.add_argument("--dir", default=".", help="Base directory of the workspace")
+    p_stop.add_argument("--signal", default="KILL", help="Signal to send (TERM, KILL, etc.)")
+    p_stop.add_argument("--dry-run", action="store_true", help="Show what would be stopped without acting")
     p_stop.set_defaults(_handler=cmd_stop_ns)
 
     p_versionlog = sub.add_parser("versionlog", help="View the version changes (changelog).")
@@ -1242,29 +1244,51 @@ def cmd_stop_ns(ns: argparse.Namespace) -> int:
     import signal
     import os
     import shutil
+    from tlm.safety.proctrack import list_processes, kill_all
+    
     base = Path(ns.dir).expanduser().resolve()
+    
+    # Resolve signal
+    sig_name = ns.signal.upper()
+    if not sig_name.startswith("SIG"):
+        sig_name = f"SIG{sig_name}"
+    try:
+        sig = getattr(signal, sig_name)
+    except AttributeError:
+        print(f"error: unknown signal {ns.signal}")
+        return 1
+
+    procs = list_processes(base)
+    if not procs:
+        print(f"No tracked processes found in {base}.")
+    else:
+        print(f"Found {len(procs)} active processes:")
+        for p in procs:
+            print(f"  [{p.proc_id[:8]}] PID {p.pid} (PGID {p.pgid}): {' '.join(p.argv)}")
+        
+        if ns.dry_run:
+            print(f"[DRY-RUN] Would send {sig_name} to these process groups.")
+        else:
+            count = kill_all(base, sig=sig)
+            print(f"Signaled {count} process groups.")
+
+    # Always clean up .tlm/tmp
     tlm_tmp = base / ".tlm" / "tmp"
-    
-    pgid_file = tlm_tmp / "last_run.pgid"
-    if pgid_file.exists():
-        try:
-            pgid = int(pgid_file.read_text().strip())
-            print(f"Stopping process group {pgid}...")
-            os.killpg(pgid, signal.SIGKILL)
-            pgid_file.unlink()
-        except (ValueError, OSError) as e:
-            print(f"warning: failed to kill process group: {e}")
-    
     if tlm_tmp.exists():
-        print(f"Cleaning up {tlm_tmp}...")
-        try:
-            shutil.rmtree(tlm_tmp)
-            tlm_tmp.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            print(f"error: failed to clean up {tlm_tmp}: {e}")
-            return 1
+        if ns.dry_run:
+            print(f"[DRY-RUN] Would clean up {tlm_tmp}")
+        else:
+            print(f"Cleaning up {tlm_tmp}...")
+            try:
+                # We keep the procs dir if we didn't kill anything? 
+                # No, stop means stop everything.
+                shutil.rmtree(tlm_tmp)
+                tlm_tmp.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                print(f"error: failed to clean up {tlm_tmp}: {e}")
+                return 1
             
-    print("Stopped and cleaned.")
+    print("Done.")
     return 0
 
 

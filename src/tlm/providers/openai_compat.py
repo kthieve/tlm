@@ -189,25 +189,36 @@ class OpenAICompatProvider:
         raise RuntimeError("rate limited (429) after retries")
 
     def _stream_sse(self, body: dict[str, Any]) -> Iterator[str]:
-        with httpx.Client(timeout=self.timeout) as client:
-            with client.stream("POST", self._url(), headers=self._headers(), json=body) as r:
-                if r.status_code in (401, 403):
-                    raise RuntimeError("API authentication failed (check API key).")
-                r.raise_for_status()
-                for line in r.iter_lines():
-                    if isinstance(line, bytes):
-                        line = line.decode("utf-8", errors="replace")
-                    if not line:
-                        continue
-                    if line.startswith("data: "):
-                        payload = line[6:].strip()
-                        if payload == "[DONE]":
-                            break
+        try:
+            # Use a specialized timeout for streaming: long overall but short read timeout
+            # to detect hangs in the middle of a stream.
+            timeout = httpx.Timeout(self.timeout, read=30.0)
+            with httpx.Client(timeout=timeout) as client:
+                with client.stream("POST", self._url(), headers=self._headers(), json=body) as r:
+                    if r.status_code in (401, 403):
+                        raise RuntimeError("API authentication failed (check API key).")
+                    r.raise_for_status()
+                    for line in r.iter_lines():
                         try:
-                            chunk = json.loads(payload)
-                            delta = chunk["choices"][0].get("delta") or {}
-                            piece = delta.get("content")
-                            if piece:
-                                yield piece
-                        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-                            continue
+                            if isinstance(line, bytes):
+                                line = line.decode("utf-8", errors="replace")
+                            if not line:
+                                continue
+                            if line.startswith("data: "):
+                                payload = line[6:].strip()
+                                if payload == "[DONE]":
+                                    break
+                                try:
+                                    chunk = json.loads(payload)
+                                    delta = chunk["choices"][0].get("delta") or {}
+                                    piece = delta.get("content")
+                                    if piece:
+                                        yield piece
+                                except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                                    continue
+                        except KeyboardInterrupt:
+                            # Propagate up to the caller
+                            raise
+        except KeyboardInterrupt:
+            # Clean exit for the stream
+            return
