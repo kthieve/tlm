@@ -74,6 +74,7 @@ KNOWN_SUBCOMMANDS = frozenset(
         "auth",
         "undo",
         "stop",
+        "versionlog",
     }
 )
 
@@ -1125,6 +1126,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_stop.add_argument("--dir", default=".", help="Base directory of the workspace")
     p_stop.set_defaults(_handler=cmd_stop_ns)
 
+    p_versionlog = sub.add_parser("versionlog", help="View the version changes (changelog).")
+    p_versionlog.set_defaults(_handler=cmd_versionlog_ns)
+
     return p
 
 
@@ -1255,6 +1259,41 @@ def cmd_auth_ns(ns: argparse.Namespace) -> int:
         return 0
 
     return 2
+
+
+def cmd_versionlog_ns(ns: argparse.Namespace) -> int:
+    try:
+        from rich.console import Console
+        from rich.markdown import Markdown
+    except ImportError:
+        Console = None  # type: ignore
+
+    import os
+    from pathlib import Path
+    import urllib.request
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    local_cl = project_root / "CHANGELOG.md"
+
+    if local_cl.is_file():
+        text = local_cl.read_text(encoding="utf-8")
+    else:
+        try:
+            url = "https://raw.githubusercontent.com/kthieve/tlm/main/CHANGELOG.md"
+            req = urllib.request.Request(url, headers={"User-Agent": "tlm-cli"})
+            with urllib.request.urlopen(req, timeout=5.0) as response:
+                text = response.read().decode("utf-8")
+        except Exception as e:
+            print(f"error: could not fetch changelog: {e}", file=sys.stderr)
+            return 2
+
+    if Console is not None:
+        console = Console()
+        console.print(Markdown(text))
+    else:
+        print(text)
+    return 0
+
 
 
 def main(argv: list[str] | None = None) -> int:

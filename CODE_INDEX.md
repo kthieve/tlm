@@ -46,6 +46,9 @@
 | `packaging/linux/deb/`, `packaging/linux/aur/` | Linux packaging scaffolding |
 | `packaging/macos/homebrew/`, `packaging/windows/*` | Placeholders for 0.3.0 |
 | `src/tlm/gui/app.py` | Tk: Keys, Sessions, Memory, Usage, Logs, Permissions |
+| `src/tlm/gui/tips.py` | Shared guidance strings and tips for installer/onboarding |
+| `src/tlm/gui/installer.py` | Tk: Post-install onboarding wizard (provider, features, guide) |
+| `install_gui.py` | Standalone Tk: Pre-install GUI installer (venv, pip, launcher) |
 | `docs/tlm.1` | Man page stub |
 | `docs/install.md` | Install from git / GitHub; PyPI section for when published |
 | `docs/sessions-and-memory.md` | Sessions, memory tiers, harvest |

@@ -220,6 +220,14 @@ def maybe_first_run_wizard() -> UserSettings:
         save_settings(UserSettings(provider="openrouter", safety_profile="standard"))
 
     s0 = load_settings()
+    
+    from tlm.gui.availability import tkinter_available
+    if tkinter_available() and sys.stdin.isatty():
+        if input("\nLaunch graphical setup wizard? [Y/n]: ").strip().lower() in ("", "y", "yes"):
+            from tlm.gui.installer import run_onboarding
+            run_onboarding()
+            return load_settings()
+
     out, code = run_setup_wizard(s0)
     if code != 0 or out is None:
         return load_settings()

@@ -12,6 +12,7 @@
 ## Phase 5 — GUI (partial)
 
 - **Done:** Keys (incl. optional keyring), session list + JSON view, usage summary text, request log tail, safety profile (`src/tlm/gui/app.py`).
+- **Done:** Graphical installer (`install_gui.py`) and onboarding wizard (`src/tlm/gui/installer.py`) with tips and budget guidance.
 - **Not done:** In-GUI chat, usage graphs, richer log redaction UX.
 
 ## Security (ongoing)

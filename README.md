@@ -13,6 +13,7 @@
 | **Doc index** | [docs/documentation.md](docs/documentation.md) |
 | **Scope & security** | [Describe_Here.md](Describe_Here.md) |
 | **Source map** | [CODE_INDEX.md](CODE_INDEX.md) |
+| **Versionlog** | [CHANGELOG.md](CHANGELOG.md) |
 
 ---
 
@@ -127,6 +128,7 @@ Run **`tlm init`** to create standard dirs and a starter config.
 | `tlm new` / `tlm harvest` | New session / promote lines to long-term memory |
 | `tlm providers` / `tlm usage` | Provider list / usage summary |
 | `tlm paths` / `tlm allow` / `tlm unallow` | Inspect or edit freelist paths |
+| `tlm versionlog` | View the version changes (changelog) |
 
 Man page stub: [docs/tlm.1](docs/tlm.1).
 
