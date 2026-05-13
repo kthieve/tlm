@@ -10,7 +10,7 @@ def test_split_extracts_argv() -> None:
 
 
 def test_split_invalid_json_keeps_block() -> None:
-    text = 'X\n```tlm-exec\nnot json\n```'
+    text = "X\n```tlm-exec\nnot json\n```"
     visible, argvs = split_reply_and_execs(text)
     assert argvs == []
     assert "not json" in visible

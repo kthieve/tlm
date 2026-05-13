@@ -29,8 +29,7 @@ def _print_table(sessions: list) -> None:
             flush=True,
         )
     print(
-        "\n[#] resume   d <#> delete   r <#> rename   n new   "
-        "h <#> harvest   q quit",
+        "\n[#] resume   d <#> delete   r <#> rename   n new   h <#> harvest   q quit",
         flush=True,
     )
 

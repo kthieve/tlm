@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 import tomllib
@@ -65,6 +66,10 @@ def _validate_path_entry(raw: str, *, label: str) -> None:
     p = Path(os.path.expanduser(raw)).resolve()
     s = str(p)
     home = Path.home().resolve()
+    if sys.platform == "win32":
+        if p.parent == p or s.lower() == str(home).lower():
+            raise ValueError(f"{label}: refusing overly broad path {raw!r} (use a subdirectory)")
+        return
     if s == "/" or s == str(home):
         raise ValueError(f"{label}: refusing overly broad path {raw!r} (use a subdirectory)")
     if s == "/home":
@@ -102,8 +107,12 @@ def load_permissions_file() -> PermissionsFile:
                 deny_paths=_str_list(block.get("deny_paths")),
                 allow_commands=_str_list(block.get("allow_commands")),
                 deny_commands=_str_list(block.get("deny_commands")),
-                network_mode=block.get("network_mode") if isinstance(block.get("network_mode"), str) else None,
-                sandbox_engine=block.get("sandbox_engine") if isinstance(block.get("sandbox_engine"), str) else None,
+                network_mode=block.get("network_mode")
+                if isinstance(block.get("network_mode"), str)
+                else None,
+                sandbox_engine=block.get("sandbox_engine")
+                if isinstance(block.get("sandbox_engine"), str)
+                else None,
             )
         )
     eg = data.get("escape_grants")

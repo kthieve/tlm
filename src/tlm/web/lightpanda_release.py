@@ -120,7 +120,9 @@ def fetch_latest_release(*, timeout: float) -> tuple[bool, dict[str, Any] | str]
     return True, data
 
 
-def pick_asset_download_url(release: dict[str, Any], asset_basename: str) -> tuple[str | None, str | None]:
+def pick_asset_download_url(
+    release: dict[str, Any], asset_basename: str
+) -> tuple[str | None, str | None]:
     """Return (browser_download_url, tag_name) for the named asset."""
     tag = release.get("tag_name")
     tag_s = str(tag) if tag else None
@@ -329,7 +331,10 @@ def download_release_binary(
                 out.close()
             resp.close()
             if cancelled:
-                return False, "Download cancelled — partial file kept; use Download again to resume."
+                return (
+                    False,
+                    "Download cancelled — partial file kept; use Download again to resume.",
+                )
         except HTTPError:
             raise
         except OSError as e:
@@ -400,11 +405,7 @@ def try_add_tlm_data_bin_to_path_rc() -> tuple[bool, str]:
     rc = _default_path_rc_file()
     line = path_line_for_tlm_data_bin()
     try:
-        existing = (
-            rc.read_text(encoding="utf-8", errors="replace")
-            if rc.is_file()
-            else ""
-        )
+        existing = rc.read_text(encoding="utf-8", errors="replace") if rc.is_file() else ""
     except OSError as e:
         return False, f"Could not read {rc}: {e}"
     if tlm_path_block_in_file(existing):
@@ -437,7 +438,11 @@ def install_latest_to_data_dir(
     """
     want = preferred_asset_basename()
     if not want:
-        return False, "No GitHub binary asset for this platform (tlm supports Linux/macOS x86_64/aarch64).", None
+        return (
+            False,
+            "No GitHub binary asset for this platform (tlm supports Linux/macOS x86_64/aarch64).",
+            None,
+        )
 
     ok, got = fetch_latest_release(timeout=timeout)
     if not ok or not isinstance(got, dict):

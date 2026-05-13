@@ -71,7 +71,9 @@ def test_format_version_update_status_offline() -> None:
 
 def test_format_version_update_status_newer_on_github(monkeypatch) -> None:
     s = UserSettings(github_repo="a/b")
-    monkeypatch.setattr("tlm.self_update.fetch_latest_release_tag", lambda _slug, timeout=3.0: "v99.0.0")
+    monkeypatch.setattr(
+        "tlm.self_update.fetch_latest_release_tag", lambda _slug, timeout=3.0: "v99.0.0"
+    )
     monkeypatch.setattr("tlm.self_update.__version__", "0.0.1")
     text = format_version_update_status(s, query_github=True)
     assert "Update available" in text or "v99" in text

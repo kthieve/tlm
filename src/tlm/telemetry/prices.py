@@ -14,18 +14,15 @@ TABLE: dict[str, tuple[float | None, float | None]] = {
     "o1-mini": (0.0011, 0.0044),
     "o1-preview": (0.015, 0.06),
     "o3-mini": (0.0011, 0.0044),
-    
     # DeepSeek
     "deepseek-chat": (0.00014, 0.00028),
     "deepseek-reasoner": (0.00014, 0.00028),
     "deepseek-v4-flash": (0.00014, 0.00028),
     "deepseek-v4-pro": (0.00174, 0.00348),
-    
     # Anthropic (commonly used via OpenAI-compatible proxies/routers)
     "claude-3-5-sonnet": (0.003, 0.015),
     "claude-3-5-haiku": (0.00025, 0.00125),
     "claude-3-opus": (0.015, 0.075),
-    
     # Prefixed variants
     "openai/gpt-4o-mini": (0.00015, 0.0006),
     "openai/gpt-4o": (0.0025, 0.01),

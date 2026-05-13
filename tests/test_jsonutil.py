@@ -7,5 +7,5 @@ def test_extract_raw_json() -> None:
 
 
 def test_extract_fenced() -> None:
-    d = extract_json_object("```json\n{\"b\": 2}\n```")
+    d = extract_json_object('```json\n{"b": 2}\n```')
     assert d["b"] == 2

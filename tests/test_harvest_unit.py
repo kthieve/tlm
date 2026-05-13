@@ -8,5 +8,5 @@ def test_extract_json_array_plain() -> None:
 
 
 def test_extract_json_array_fenced() -> None:
-    s = "```json\n[\"x\"]\n```"
+    s = '```json\n["x"]\n```'
     assert _extract_json_array(s) == ["x"]

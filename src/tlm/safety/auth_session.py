@@ -16,7 +16,7 @@ def _get_token_file() -> Path:
         base = Path(state_home)
     else:
         base = Path.home() / ".local" / "state"
-    
+
     d = base / "tlm"
     d.mkdir(parents=True, exist_ok=True)
     return d / "auth_token.json"
@@ -26,13 +26,10 @@ def create_auth_token(ttl_minutes: int = 30) -> str:
     """Create a new session token valid for N minutes."""
     token = secrets.token_urlsafe(32)
     expires_at = time.time() + (ttl_minutes * 60)
-    
+
     f = _get_token_file()
-    data = {
-        "token": token,
-        "expires_at": expires_at
-    }
-    
+    data = {"token": token, "expires_at": expires_at}
+
     f.write_text(json.dumps(data), encoding="utf-8")
     f.chmod(0o600)
     return token
@@ -43,7 +40,7 @@ def validate_auth_token() -> bool:
     f = _get_token_file()
     if not f.exists():
         return False
-        
+
     try:
         data = json.loads(f.read_text(encoding="utf-8"))
         expires_at = data.get("expires_at", 0)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import stat
 import sys
+import ctypes
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,11 @@ _ELEVATION = frozenset({"sudo", "doas", "su", "pkexec", "runuser"})
 
 
 def is_euid_root() -> bool:
+    if sys.platform == "win32":
+        try:
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            return False
     try:
         return os.geteuid() == 0
     except AttributeError:
@@ -80,7 +86,10 @@ def check_write_paths(
     if not bad:
         return True, None
     if prof in (SafetyProfile.strict, SafetyProfile.standard):
-        return False, "root guard: writes under system directories are blocked in strict/standard profile"
+        return (
+            False,
+            "root guard: writes under system directories are blocked in strict/standard profile",
+        )
     return True, None  # trusted: phrase gate happens in prompt_root_trusted
 
 

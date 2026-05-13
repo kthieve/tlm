@@ -22,11 +22,12 @@ class StubProvider:
         key_state = "set" if key else "missing (set TLM_API_KEY or TLM_<PROVIDER>_API_KEY)"
         sys_note = ""
         if system:
-            sys_note = f"\n[system: {system[:80]}…]" if len(system) > 80 else f"\n[system: {system}]"
+            sys_note = (
+                f"\n[system: {system[:80]}…]" if len(system) > 80 else f"\n[system: {system}]"
+            )
         return (
             f"[{self.id}] stub reply — API key {key_state}.{sys_note}\n"
-            f"Prompt ({len(prompt)} chars): {prompt[:200]}"
-            + ("…" if len(prompt) > 200 else "")
+            f"Prompt ({len(prompt)} chars): {prompt[:200]}" + ("…" if len(prompt) > 200 else "")
         )
 
     def stream(self, prompt: str, *, system: str | None = None) -> Iterator[str]:

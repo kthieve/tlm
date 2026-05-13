@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import time
@@ -110,7 +109,9 @@ def list_snapshots(path: Path) -> list[SnapshotInfo]:
                 lines = p.read_text(encoding="utf-8").splitlines()
                 if len(lines) >= 2:
                     ts = float(sid.split("-")[-1])
-                    results.append(SnapshotInfo(id=sid, timestamp=ts, message=lines[1], is_git=True))
+                    results.append(
+                        SnapshotInfo(id=sid, timestamp=ts, message=lines[1], is_git=True)
+                    )
             except (ValueError, IndexError, OSError):
                 continue
         elif p.is_dir() and p.name.startswith("file-"):
@@ -118,7 +119,11 @@ def list_snapshots(path: Path) -> list[SnapshotInfo]:
             try:
                 ts = float(sid.split("-")[-1])
                 msg_file = p / ".tlm_msg"
-                msg = msg_file.read_text(encoding="utf-8") if msg_file.exists() else f"File snapshot {sid}"
+                msg = (
+                    msg_file.read_text(encoding="utf-8")
+                    if msg_file.exists()
+                    else f"File snapshot {sid}"
+                )
                 results.append(SnapshotInfo(id=sid, timestamp=ts, message=msg, is_git=False))
             except (ValueError, IndexError, OSError):
                 continue
@@ -126,10 +131,42 @@ def list_snapshots(path: Path) -> list[SnapshotInfo]:
     return sorted(results, key=lambda x: x.timestamp, reverse=True)
 
 
+def diff_snapshot(path: Path, snapshot_id: str) -> str:
+    """Return a string representing the diff between current state and snapshot."""
+    dot_tlm = path / ".tlm" / "snapshots"
+
+    if snapshot_id.startswith("git-"):
+        sha_file = dot_tlm / f"{snapshot_id}.sha"
+        if not sha_file.exists():
+            return "error: snapshot file not found."
+        try:
+            sha = sha_file.read_text(encoding="utf-8").splitlines()[0].strip()
+            res = subprocess.run(
+                ["git", "diff", "--name-status", sha],
+                cwd=str(path),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return res.stdout or "(no differences)"
+        except (subprocess.CalledProcessError, IndexError, OSError) as e:
+            return f"error computing git diff: {e}"
+
+    if snapshot_id.startswith("file-"):
+        backup_dir = dot_tlm / snapshot_id
+        if not backup_dir.exists():
+            return "error: backup directory not found."
+        # For file-based, showing a full diff is heavy; we'll just list changed files for now
+        # by comparing sizes/mtimes or just mentioning the backup location.
+        return f"(file-based snapshot: files would be restored from {backup_dir})"
+
+    return "error: unknown snapshot type"
+
+
 def restore_snapshot(path: Path, snapshot_id: str) -> bool:
     """Restore the workspace to a previous snapshot."""
     dot_tlm = path / ".tlm" / "snapshots"
-    
+
     if snapshot_id.startswith("git-"):
         sha_file = dot_tlm / f"{snapshot_id}.sha"
         if not sha_file.exists():
@@ -154,7 +191,7 @@ def restore_snapshot(path: Path, snapshot_id: str) -> bool:
                 if ".tlm_msg" in files:
                     return [".tlm_msg"]
                 return []
-            
+
             shutil.copytree(backup_dir, path, ignore=ignore_func, dirs_exist_ok=True)
             return True
         except (OSError, shutil.Error):

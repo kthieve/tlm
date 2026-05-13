@@ -15,7 +15,7 @@ def test_validate_rejects_root_on_load(tmp_path: Path, monkeypatch: pytest.Monke
     cfg.mkdir()
     (cfg / "permissions.toml").write_text(
         '[global]\nnetwork_mode = "ask"\nsandbox_engine = "auto"\nallow_paths = ["/"]\n'
-        'read_paths = []\ndeny_paths = []\nallow_commands = []\ndeny_commands = []\n\n'
+        "read_paths = []\ndeny_paths = []\nallow_commands = []\ndeny_commands = []\n\n"
         "[escape_grants]\npaths = []\n",
         encoding="utf-8",
     )

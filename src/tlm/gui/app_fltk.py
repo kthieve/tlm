@@ -117,7 +117,9 @@ def run_gui_fltk() -> None:
             Fl_Box(20, 78, 120, 22, "lightpanda path")
             self.lp_path_in = Fl_Input(140, 76, 530, 22)
             self.lp_path_in.value(self.settings.lightpanda_path or "")
-            self.lp_auto = Fl_Check_Button(20, 104, 420, 22, "Auto-check GitHub when opening this tab")
+            self.lp_auto = Fl_Check_Button(
+                20, 104, 420, 22, "Auto-check GitHub when opening this tab"
+            )
             self.lp_auto.value(1 if self.settings.web_check_lightpanda_updates else 0)
             Fl_Box(20, 132, 120, 22, "web_user_agent")
             self.web_ua_in = Fl_Input(140, 130, 530, 22)
@@ -125,7 +127,9 @@ def run_gui_fltk() -> None:
             Fl_Box(20, 158, 120, 22, "web_ua_suffix")
             self.web_ua_suffix_in = Fl_Input(140, 156, 530, 22)
             self.web_ua_suffix_in.value(self.settings.web_user_agent_suffix or "")
-            Fl_Box(20, 184, 360, 18, "Compatibility passthrough only; does not bypass anti-bot checks.")
+            Fl_Box(
+                20, 184, 360, 18, "Compatibility passthrough only; does not bypass anti-bot checks."
+            )
             Fl_Box(20, 206, 200, 18, "Status (Refresh queries GitHub)")
             self.lp_status = Fl_Multiline_Input(20, 226, 660, 156)
             self.lp_status.value("")
@@ -206,7 +210,13 @@ def run_gui_fltk() -> None:
             gabout = Fl_Group(8, 35, 704, 425, "About")
             self._gw_about = gabout
             gabout.begin()
-            Fl_Box(20, 52, 660, 22, "Version, install kind, and latest GitHub tag (Refresh queries the network).")
+            Fl_Box(
+                20,
+                52,
+                660,
+                22,
+                "Version, install kind, and latest GitHub tag (Refresh queries the network).",
+            )
             self.about_txt = Fl_Multiline_Input(20, 78, 660, 320)
             ba = Fl_Button(20, 408, 300, 28, "Refresh (query GitHub)")
             ba.callback(self._refresh_about_fltk)
@@ -290,12 +300,15 @@ def run_gui_fltk() -> None:
             self.lp_status.value("\n".join(lines))
 
         def _download_lp_fltk(self, *_a: object) -> None:
-            if fl_choice(
-                "Download latest Lightpanda for this OS into ~/.local/share/tlm/bin ?",
-                "OK",
-                "Cancel",
-                None,
-            ) != 0:
+            if (
+                fl_choice(
+                    "Download latest Lightpanda for this OS into ~/.local/share/tlm/bin ?",
+                    "OK",
+                    "Cancel",
+                    None,
+                )
+                != 0
+            ):
                 return
 
             cancel_ev = threading.Event()
@@ -340,7 +353,13 @@ def run_gui_fltk() -> None:
             pr = Fl_Progress(20, 52, 420, 22)
             pr.minimum(1.0)
             pr.maximum(0.0)
-            Fl_Box(20, 78, 420, 28, "Partial download resumes next time (same URL). Cancel keeps .partial.")
+            Fl_Box(
+                20,
+                78,
+                420,
+                28,
+                "Partial download resumes next time (same URL). Cancel keeps .partial.",
+            )
             bc = Fl_Button(320, 118, 120, 28, "Cancel")
 
             def on_cancel(*_a: object) -> None:
@@ -401,12 +420,15 @@ def run_gui_fltk() -> None:
             pdir = str(Path(dest).parent) if dest else ""
             if not pdir:
                 return
-            if fl_choice(
-                f"Add {pdir} to PATH in .bashrc/.zshrc (see $SHELL)?",
-                "Yes",
-                "No",
-                None,
-            ) == 0:
+            if (
+                fl_choice(
+                    f"Add {pdir} to PATH in .bashrc/.zshrc (see $SHELL)?",
+                    "Yes",
+                    "No",
+                    None,
+                )
+                == 0
+            ):
                 _ok, msg = try_add_tlm_data_bin_to_path_rc()
                 fl_alert(f"tlm: {msg}")
 
@@ -427,7 +449,9 @@ def run_gui_fltk() -> None:
                 s.api_keys[s.provider] = self.key_in.value().strip()
             try:
                 p = get_provider(s.provider, settings=s)
-                out = p.complete("Reply with the single word: ok", system="You are a connection test.")
+                out = p.complete(
+                    "Reply with the single word: ok", system="You are a connection test."
+                )
                 fl_alert(out[:400])
             except Exception as e:  # noqa: BLE001
                 fl_alert(f"tlm: {e}")

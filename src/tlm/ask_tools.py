@@ -10,7 +10,12 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from tlm.memory import format_ready_for_prompt, format_search_results_for_prompt, prune_ready_to_budget, search_longterm
+from tlm.memory import (
+    format_ready_for_prompt,
+    format_search_results_for_prompt,
+    prune_ready_to_budget,
+    search_longterm,
+)
 from tlm.providers.base import LLMProvider
 from tlm.safety import check_argv
 from tlm.session import Session, append_assistant, append_user
@@ -31,11 +36,16 @@ TLM_WEB_PATTERN = re.compile(
     r"```tlm-web\s*\n(\[[\s\S]*?\]|\{[\s\S]*?\})\s*\n```",
     re.IGNORECASE,
 )
+TLM_MEM_PROPOSE_PATTERN = re.compile(
+    r"```tlm-mem-propose\s*\n(\{[\s\S]*?\})\s*\n```", re.IGNORECASE
+)
 
 # Default cap for `tlm ask` tool loop; overridden by `ask_max_tool_rounds` in config (clamped 2–32).
 DEFAULT_ASK_MAX_TOOL_ROUNDS = 12
 
-SYSTEM_PLAIN = "You are tlm, a helpful Linux-oriented assistant."
+SYSTEM_PLAIN = """You are tlm, a helpful Linux-oriented assistant.
+
+If the user asks to create, write, or modify files, or execute state-modifying commands, inform them that you are currently in "ask" (read-only) mode. Instruct them to exit and use `tlm write <request>` for file operations or `tlm do <request>` for executing commands."""
 
 SYSTEM_TOOLS = """You are tlm, a helpful Linux-oriented assistant.
 
@@ -51,6 +61,7 @@ Rules:
 - Never suggest destructive or privileged commands (no rm, dd, mkfs, curl|bash, sudo, writes under /etc).
 - Only use `tlm-exec` when the question needs live local machine facts. For general knowledge/web/content questions, answer directly and avoid shell diagnostics.
 - After the user provides command output, answer concisely. Avoid new `tlm-exec` blocks unless you still lack critical facts (keep rounds minimal).
+- If the user explicitly asks to create, write, or modify files, or run state-modifying commands (like `mkdir`), do NOT output manual shell commands like `cat > file`. Instead, inform them they are in "ask" mode and should use `tlm write <request>` for files or `tlm do <request>` for executing commands.
 """
 
 MEM_BLOCK_HELP = """
@@ -61,6 +72,16 @@ You may query stored **long-term memory** (read-only) with a fenced block:
 ```
 
 Use this when recalling stable facts the user may have stored earlier. Keep queries short.
+"""
+
+MEM_PROPOSE_HELP = """
+If you discover a stable user preference or fact that isn't covered by current rules, you may propose a **new memory rule**:
+
+```tlm-mem-propose
+{"text": "Prefer using 'neovim' over 'vim'", "type": "store"}
+```
+
+Type can be "store" or "never". Only propose rules for stable, long-term preferences.
 """
 
 WEB_BLOCK_HELP = (
@@ -124,8 +145,14 @@ WEB_PREREQ_NO_LIGHTPANDA = """\
 
 def split_reply_tools(
     content: str,
-) -> tuple[str, list[list[str]], list[dict[str, object]], list[dict[str, object]]]:
-    """Remove well-formed ```tlm-exec```, ```tlm-mem```, ```tlm-web``` blocks from visible text."""
+) -> tuple[
+    str,
+    list[list[str]],
+    list[dict[str, object]],
+    list[dict[str, object]],
+    list[dict[str, object]],
+]:
+    """Remove well-formed ```tlm-exec```, ```tlm-mem```, ```tlm-web```, ```tlm-mem-propose``` blocks from visible text."""
     matches: list[tuple[str, int, int, str]] = []
     for m in TLM_EXEC_PATTERN.finditer(content):
         matches.append(("exec", m.start(), m.end(), m.group(1)))
@@ -133,11 +160,14 @@ def split_reply_tools(
         matches.append(("mem", m.start(), m.end(), m.group(1)))
     for m in TLM_WEB_PATTERN.finditer(content):
         matches.append(("web", m.start(), m.end(), m.group(1)))
+    for m in TLM_MEM_PROPOSE_PATTERN.finditer(content):
+        matches.append(("mem-propose", m.start(), m.end(), m.group(1)))
     matches.sort(key=lambda x: x[1])
 
     argvs: list[list[str]] = []
     mem_ops: list[dict[str, object]] = []
     web_ops: list[dict[str, object]] = []
+    mem_proposals: list[dict[str, object]] = []
     out_chunks: list[str] = []
     pos = 0
     for kind, start, end, body in matches:
@@ -165,6 +195,11 @@ def split_reply_tools(
                     mem_ops.append(data)
                 else:
                     out_chunks.append(content[start:end])
+            elif kind == "mem-propose":
+                if isinstance(data, dict):
+                    mem_proposals.append(data)
+                else:
+                    out_chunks.append(content[start:end])
             elif isinstance(data, dict):
                 web_ops.append(data)
             elif (
@@ -178,12 +213,12 @@ def split_reply_tools(
                 out_chunks.append(content[start:end])
     out_chunks.append(content[pos:])
     visible = "".join(out_chunks).strip()
-    return visible, argvs, mem_ops, web_ops
+    return visible, argvs, mem_ops, web_ops, mem_proposals
 
 
 def split_reply_and_execs(content: str) -> tuple[str, list[list[str]]]:
     """Backward-compatible: visible text + argv lists only."""
-    v, a, _, _ = split_reply_tools(content)
+    v, a, _, _, _ = split_reply_tools(content)
     return v, a
 
 
@@ -199,6 +234,45 @@ def _mem_feedback(mem_ops: list[dict[str, object]]) -> str:
             continue
         hits = search_longterm(q, k=5)
         parts.append(format_search_results_for_prompt(hits))
+    return "\n\n".join(parts).strip()
+
+
+def _mem_propose_feedback(proposals: list[dict[str, object]]) -> str:
+    from tlm.memory_rules import MemoryRule, load_memory_rules, save_memory_rules
+    import uuid
+
+    parts: list[str] = []
+    for p in proposals:
+        text = str(p.get("text", "")).strip()
+        rtype = str(p.get("type", "store")).lower()
+        if rtype not in ("store", "never"):
+            rtype = "store"
+
+        if not text:
+            parts.append("(tlm-mem-propose missing text)")
+            continue
+
+        print(f"\n[Proposed Memory Rule ({rtype})]: {text}")
+        try:
+            c = input("Accept this rule? [y/N]: ").strip().lower()
+        except EOFError:
+            parts.append("(rule proposal cancelled)")
+            continue
+
+        if c in ("y", "yes"):
+            rules = load_memory_rules()
+            # Check for duplicates
+            if any(r.text.lower() == text.lower() for r in rules):
+                parts.append(f"(rule already exists: {text})")
+                continue
+            
+            new_id = f"rule_{uuid.uuid4().hex[:8]}"
+            rules.append(MemoryRule(id=new_id, text=text, type=rtype))
+            save_memory_rules(rules)
+            parts.append(f"(rule accepted and saved: {text})")
+        else:
+            parts.append("(rule proposal rejected by user)")
+    
     return "\n\n".join(parts).strip()
 
 
@@ -230,7 +304,9 @@ def print_markdown(text: str) -> None:
         print(text)
 
 
-def _run_argv(argv: list[str], *, timeout: float, env: dict[str, str] | None = None) -> tuple[int, str]:
+def _run_argv(
+    argv: list[str], *, timeout: float, env: dict[str, str] | None = None
+) -> tuple[int, str]:
     proc = subprocess.run(  # noqa: S603
         argv,
         shell=False,
@@ -419,7 +495,9 @@ def _run_web_ops_interactive(
     ua = (settings.web_user_agent or "").strip()
     ua_suffix = (settings.web_user_agent_suffix or "").strip()
     if ua and not bool(caps.get("user_agent")):
-        parts.append("(tlm-web: configured `web_user_agent`, but this Lightpanda build lacks `--user-agent`; ignoring.)")
+        parts.append(
+            "(tlm-web: configured `web_user_agent`, but this Lightpanda build lacks `--user-agent`; ignoring.)"
+        )
     if (not ua) and ua_suffix and not bool(caps.get("user_agent_suffix")):
         parts.append(
             "(tlm-web: configured `web_user_agent_suffix`, but this Lightpanda build lacks "
@@ -611,10 +689,14 @@ def _clamp_web_conc(settings: UserSettings) -> int:
 def estimate_ask_tokens(prov: LLMProvider, sys_prompt: str, sess: Session) -> tuple[int, int]:
     """Rough input/output token totals for telemetry."""
     in_t = prov.count_tokens(sys_prompt) + sum(
-        prov.count_tokens(str(m.get("content", ""))) for m in sess.messages if m.get("role") == "user"
+        prov.count_tokens(str(m.get("content", "")))
+        for m in sess.messages
+        if m.get("role") == "user"
     )
     out_t = sum(
-        prov.count_tokens(str(m.get("content", ""))) for m in sess.messages if m.get("role") == "assistant"
+        prov.count_tokens(str(m.get("content", "")))
+        for m in sess.messages
+        if m.get("role") == "assistant"
     )
     return in_t, out_t
 
@@ -636,6 +718,7 @@ def _build_system_prompt(
         ready_block = format_ready_for_prompt(pruned) + "\n"
     base = SYSTEM_TOOLS if tools else SYSTEM_PLAIN
     mem_help = (MEM_BLOCK_HELP + "\n") if memory_enabled else ""
+    propose_help = (MEM_PROPOSE_HELP + "\n") if memory_enabled else ""
     web_help = ""
     if web_prerequisite.strip():
         web_help += web_prerequisite.strip() + "\n"
@@ -643,7 +726,7 @@ def _build_system_prompt(
         web_help += WEB_BLOCK_HELP.rstrip() + "\n"
     if web_note.strip():
         web_help += web_note.strip() + "\n"
-    return f"{ready_block}{base}\n{mem_help}{web_help}".strip() + "\n"
+    return f"{ready_block}{base}\n{mem_help}{propose_help}{web_help}".strip() + "\n"
 
 
 def run_interactive_ask(
@@ -732,7 +815,9 @@ def run_interactive_ask(
     )
 
     # Web approval: [1] batch, [2] trust rest of this run, [3] per-item; or `web_auto_approve_run` in config.
-    web_consent = WebConsent(approved_keys=set(), trust_run=bool(getattr(settings, "web_auto_approve_run", False)))
+    web_consent = WebConsent(
+        approved_keys=set(), trust_run=bool(getattr(settings, "web_auto_approve_run", False))
+    )
     max_tool_rounds = max(2, min(32, int(settings.ask_max_tool_rounds)))
 
     try:
@@ -747,8 +832,13 @@ def run_interactive_ask(
             append_assistant(sess, reply)
             msgs.append({"role": "assistant", "content": reply})
 
-            visible, argvs, mem_ops, web_ops = split_reply_tools(reply)
+            visible, argvs, mem_ops, web_ops, mem_proposals = split_reply_tools(reply)
             mem_fb = _mem_feedback(mem_ops) if (memory_on and mem_ops) else ""
+            propose_fb = (
+                _mem_propose_feedback(mem_proposals)
+                if (memory_on and mem_proposals)
+                else ""
+            )
 
             tty = sys.stdin.isatty()
             exec_wanted = bool(tools and argvs)
@@ -757,6 +847,8 @@ def run_interactive_ask(
             feedback_parts: list[str] = []
             if mem_fb:
                 feedback_parts.append(mem_fb)
+            if propose_fb:
+                feedback_parts.append(propose_fb)
 
             non_tty_blocks = (exec_wanted or web_wanted) and not tty
             if non_tty_blocks and not mem_fb:
@@ -766,7 +858,9 @@ def run_interactive_ask(
                 if web_wanted:
                     notes.append(web_skip_note)
                 note = "\n\n".join(notes)
-                print_markdown((visible if visible.strip() else reply) + ("\n\n" + note if note else ""))
+                print_markdown(
+                    (visible if visible.strip() else reply) + ("\n\n" + note if note else "")
+                )
                 in_t, out_t = estimate_ask_tokens(prov, sys_prompt, sess)
                 return 0, in_t, out_t, int((time.perf_counter() - t_all) * 1000)
 
@@ -798,8 +892,12 @@ def run_interactive_ask(
                         )
                         continue
                     if use_rich:
-                        pcon.print(RichPanel(cmd_line, title="Proposed command", border_style="yellow"))
-                        run = RichConfirm.ask("Execute on your machine?", default=False, console=pcon)
+                        pcon.print(
+                            RichPanel(cmd_line, title="Proposed command", border_style="yellow")
+                        )
+                        run = RichConfirm.ask(
+                            "Execute on your machine?", default=False, console=pcon
+                        )
                     else:
                         print(f"\nProposed: {cmd_line}", file=sys.stderr, flush=True)
                         run = input("Execute? [y/N]: ").strip().lower() in ("y", "yes")
@@ -815,7 +913,9 @@ def run_interactive_ask(
                     except OSError as e:
                         exec_parts.append(f"$ {cmd_line}\n(error: {e})")
 
-                feedback_parts.append("\n\n".join(exec_parts) if exec_parts else "(no commands run)")
+                feedback_parts.append(
+                    "\n\n".join(exec_parts) if exec_parts else "(no commands run)"
+                )
 
             if tty and web_wanted:
                 if not printed_visible_for_tools and visible.strip():
@@ -845,7 +945,9 @@ def run_interactive_ask(
                         web_consent=web_consent,
                         assistant_visible=visible,
                     )
-                    feedback_parts.append("\n\n".join(web_parts) if web_parts else "(no web fetches run)")
+                    feedback_parts.append(
+                        "\n\n".join(web_parts) if web_parts else "(no web fetches run)"
+                    )
 
             if feedback_parts:
                 combined = "\n\n".join(p for p in feedback_parts if p)

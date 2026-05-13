@@ -54,7 +54,10 @@ def ensure_xdg_dirs() -> None:
 
 
 def _eof() -> None:
-    print("\n(error: end of input; run `tlm init --wizard` with a TTY to finish setup.)", file=sys.stderr)
+    print(
+        "\n(error: end of input; run `tlm init --wizard` with a TTY to finish setup.)",
+        file=sys.stderr,
+    )
 
 
 def _provider_prompt_value(raw: str, all_ids: list[str]) -> str | None:
@@ -105,7 +108,10 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
         v = input(f"Active provider [{default_pid}]: ").strip()
         chosen = _provider_prompt_value(v, all_ids)
         if v and chosen is None:
-            print("error: unknown provider selection. Use a menu number or provider id.", file=sys.stderr)
+            print(
+                "error: unknown provider selection. Use a menu number or provider id.",
+                file=sys.stderr,
+            )
             return None, 2
         pid = chosen or default_pid
         s.provider = pid
@@ -171,9 +177,13 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
             ).strip()
             if v_lp:
                 s.lightpanda_path = v_lp
-            vac = input(
-                "In the config GUI, auto-check Lightpanda on GitHub when opening the Web tab? [y/N]: "
-            ).strip().lower()
+            vac = (
+                input(
+                    "In the config GUI, auto-check Lightpanda on GitHub when opening the Web tab? [y/N]: "
+                )
+                .strip()
+                .lower()
+            )
             if vac in ("y", "yes"):
                 s.web_check_lightpanda_updates = True
             elif vac in ("n", "no"):
@@ -189,7 +199,9 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
             print(f"  lightpanda_path: {s.lightpanda_path}", flush=True)
         if s.web_enabled:
             print(f"  web_check_lightpanda_updates: {s.web_check_lightpanda_updates}", flush=True)
-        key_ok = bool(merged_api_key(normalize_provider_id((s.provider or "openrouter").strip()), s))
+        key_ok = bool(
+            merged_api_key(normalize_provider_id((s.provider or "openrouter").strip()), s)
+        )
         print(f"  API key set:     {key_ok}", flush=True)
 
         c = input("\nSave this configuration? [Y/n]: ").strip().lower()
@@ -220,11 +232,13 @@ def maybe_first_run_wizard() -> UserSettings:
         save_settings(UserSettings(provider="openrouter", safety_profile="standard"))
 
     s0 = load_settings()
-    
+
     from tlm.gui.availability import tkinter_available
+
     if tkinter_available() and sys.stdin.isatty():
         if input("\nLaunch graphical setup wizard? [Y/n]: ").strip().lower() in ("", "y", "yes"):
             from tlm.gui.installer import run_onboarding
+
             run_onboarding()
             return load_settings()
 

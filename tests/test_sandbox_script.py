@@ -6,7 +6,9 @@ from pathlib import Path
 
 def test_sandbox_help() -> None:
     root = Path(__file__).resolve().parents[1]
-    r = subprocess.run([sys.executable, str(root / "sandbox.py")], capture_output=True, text=True, check=False)
+    r = subprocess.run(
+        [sys.executable, str(root / "sandbox.py")], capture_output=True, text=True, check=False
+    )
     assert r.returncode == 0
     assert "sandbox.py env" in r.stdout
 

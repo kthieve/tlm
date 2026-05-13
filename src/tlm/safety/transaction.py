@@ -30,21 +30,21 @@ class AtomicTransaction:
     def stage(self, target: Path, contents: str, mode: Optional[int] = None) -> None:
         """Stage a file write to the transaction."""
         target = target.expanduser().resolve()
-        
+
         # Unique tmp file in our txn dir
         tmp_name = str(uuid.uuid4())
         tmp_path = self.tmp_dir / tmp_name
-        
+
         # Write contents to tmp file
         tmp_path.write_text(contents, encoding="utf-8")
         if mode is not None:
             tmp_path.chmod(mode)
-            
+
         self.items[target] = TransactionItem(target=target, tmp_path=tmp_path, mode=mode)
 
     def commit(self) -> list[Path]:
         """
-        Commit all staged changes. 
+        Commit all staged changes.
         If any step fails, it attempts to roll back to the state before the commit started.
         Returns a list of successfully written target paths.
         """
@@ -58,7 +58,7 @@ class AtomicTransaction:
         # 2. Back up existing files if they exist
         backup_dir = self.tmp_dir / "backups"
         backup_dir.mkdir(exist_ok=True)
-        
+
         try:
             for target, item in self.items.items():
                 if target.exists():
@@ -84,7 +84,7 @@ class AtomicTransaction:
 
     def rollback(self) -> None:
         """
-        Roll back the transaction. 
+        Roll back the transaction.
         Restores any applied changes from backups.
         """
         # Restore any applied files
@@ -98,7 +98,7 @@ class AtomicTransaction:
             elif target.exists():
                 # If it didn't exist before, delete it
                 target.unlink()
-        
+
         self.applied = []
         self.committed = False
 

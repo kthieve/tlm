@@ -11,10 +11,10 @@ from tlm.safety.tools import check_readonly
 
 
 class SafetyTier(IntEnum):
-    ROOT = 0        # Tier 0: Root (enhanced 'trusted')
-    WORKSPACE = 1   # Tier 1: Workspace ('standard')
-    WHITELIST = 2   # Tier 2: Whitelist ('strict')
-    SANDBOX = 3     # Tier 3: Sandbox (Isolated bwrap/firejail)
+    ROOT = 0  # Tier 0: Root (enhanced 'trusted')
+    WORKSPACE = 1  # Tier 1: Workspace ('standard')
+    WHITELIST = 2  # Tier 2: Whitelist ('strict')
+    SANDBOX = 3  # Tier 3: Sandbox (Isolated bwrap/firejail)
 
 
 class SafetyProfile(str, Enum):
@@ -81,7 +81,9 @@ def overlay_effective_policy(ep: EffectivePolicy, profile: str | SafetyProfile) 
         return replace(ep, network_mode="off", sandbox_engine="auto")
     if p == SafetyProfile.strict:
         # Tier 2: Whitelist. Tighten: off network, auto sandbox unless manually disabled.
-        return replace(ep, network_mode="off", sandbox_engine="auto" if ep.sandbox_engine != "off" else "off")
+        return replace(
+            ep, network_mode="off", sandbox_engine="auto" if ep.sandbox_engine != "off" else "off"
+        )
     if p == SafetyProfile.standard:
         # Tier 1: Workspace. Respect permissions.toml.
         return ep

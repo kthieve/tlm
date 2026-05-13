@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Development sandbox: isolated XDG + venv under sandboxes/<name>/ (gitignored).
 
-  python sandbox.py env [--sandbox NAME]     # eval "$(python sandbox.py env)"  |  PowerShell: sandbox.py env --pwsh
-  python sandbox.py init [--sandbox NAME]    # venv, pip install -e ., tlm init, activation scripts
-  python sandbox.py refresh [--sandbox NAME] # wipe config/state; reinstall (keeps [keys] unless --wipe-keys)
-  python sandbox.py run [--sandbox NAME] -- tlm ask hello
-  python sandbox.py shell [--sandbox NAME] # bash -i or pwsh (same sandbox = resume)
+python sandbox.py env [--sandbox NAME]     # eval "$(python sandbox.py env)"  |  PowerShell: sandbox.py env --pwsh
+python sandbox.py init [--sandbox NAME]    # venv, pip install -e ., tlm init, activation scripts
+python sandbox.py refresh [--sandbox NAME] # wipe config/state; reinstall (keeps [keys] unless --wipe-keys)
+python sandbox.py run [--sandbox NAME] -- tlm ask hello
+python sandbox.py shell [--sandbox NAME] # bash -i or pwsh (same sandbox = resume)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -132,8 +133,8 @@ def cmd_env(ns: argparse.Namespace) -> int:
         print('$if (-not $env:TLM_PROVIDER) { $env:TLM_PROVIDER = "stub" }')
         if paths["venv"].is_dir():
             vp = venv_scripts_bin(paths)
-            print(f'$env:VIRTUAL_ENV = {_pwsh_escape(str(paths["venv"]))}')
-            print(f'$env:PATH = {_pwsh_escape(str(vp) + ";")} + $env:PATH')
+            print(f"$env:VIRTUAL_ENV = {_pwsh_escape(str(paths['venv']))}")
+            print(f"$env:PATH = {_pwsh_escape(str(vp) + ';')} + $env:PATH")
         return 0
 
     for k, v in xdg.items():
@@ -387,9 +388,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_env = sub.add_parser("env", help="Print shell exports for eval / PowerShell", parents=[parent])
+    p_env = sub.add_parser(
+        "env", help="Print shell exports for eval / PowerShell", parents=[parent]
+    )
     p_env.add_argument("--fish", action="store_true", help="Emit fish set -gx lines")
-    p_env.add_argument("--pwsh", dest="format_pwsh", action="store_true", help="Emit PowerShell $env: lines")
+    p_env.add_argument(
+        "--pwsh", dest="format_pwsh", action="store_true", help="Emit PowerShell $env: lines"
+    )
     p_env.add_argument(
         "--posix",
         "--bash",
@@ -399,9 +404,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_env.set_defaults(_fn=cmd_env, format_pwsh=False, format_posix=False)
 
-    sub.add_parser("init", help="Create venv, pip install -e ., tlm init, activation scripts", parents=[parent]).set_defaults(
-        _fn=cmd_init
-    )
+    sub.add_parser(
+        "init", help="Create venv, pip install -e ., tlm init, activation scripts", parents=[parent]
+    ).set_defaults(_fn=cmd_init)
 
     p_ref = sub.add_parser(
         "refresh",

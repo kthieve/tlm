@@ -76,8 +76,10 @@ KNOWN_SUBCOMMANDS = frozenset(
         "undo",
         "stop",
         "versionlog",
+        "wizard",
     }
 )
+
 
 def read_stdin_blob(max_chars: int = 256_000) -> str:
     """Append stdin to the prompt when it is a pipe/redirect with data ready (no hang on empty non-tty)."""
@@ -287,7 +289,9 @@ def cmd_models_route(ns: argparse.Namespace) -> int:
     """List / set / pick models (OpenAI-compatible ``GET .../v1/models``)."""
     sub = getattr(ns, "models_cmd", None) or "pick"
     s = load_settings()
-    pid = normalize_provider_id(getattr(ns, "models_provider", None) or s.provider or default_provider())
+    pid = normalize_provider_id(
+        getattr(ns, "models_provider", None) or s.provider or default_provider()
+    )
 
     if sub == "set":
         model = getattr(ns, "model_name", "").strip()
@@ -545,7 +549,9 @@ def cmd_init(ns: argparse.Namespace) -> int:
     p = config_file_path()
     if getattr(ns, "dry_run", False):
         print("tlm init [DRY RUN]:")
-        print(f"  would create/ensure dirs: {p.parent}, {data_dir()}, {sessions_dir()}, {state_dir()}")
+        print(
+            f"  would create/ensure dirs: {p.parent}, {data_dir()}, {sessions_dir()}, {state_dir()}"
+        )
         if not p.is_file():
             print(f"  would create default config: {p}")
         return 0
@@ -605,18 +611,32 @@ def cmd_init(ns: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_wizard() -> int:
+    """Explicitly re-run the setup wizard."""
+    if not sys.stdin.isatty():
+        print("error: wizard requires an interactive terminal (TTY).", file=sys.stderr)
+        return 2
+    s = load_settings()
+    _out, code = run_setup_wizard(s)
+    if code == 2:
+        return 2
+    return 0 if code == 0 else 1
+
+
 def cmd_config_route(ns: argparse.Namespace) -> int:
     if getattr(ns, "config_cmd", None) == "gui":
         return run_gui_safe()
     if getattr(ns, "config_cmd", None) == "migrate-keys":
         return cmd_migrate_keys()
-    
+
     try:
         from tlm.tui.app import run_tui_app
+
         return run_tui_app()
     except (ImportError, Exception):
         # Fallback to simple TUI if textual is missing or fails
         from tlm.tui_config import run_config_tui
+
         return run_config_tui()
 
 
@@ -645,7 +665,11 @@ def cmd_migrate_keys() -> int:
 def cmd_paths() -> int:
     from pathlib import Path
 
-    from tlm.safety.permissions import effective_policy, load_permissions_file, permissions_file_path
+    from tlm.safety.permissions import (
+        effective_policy,
+        load_permissions_file,
+        permissions_file_path,
+    )
     from tlm.safety.permissions import git_toplevel
 
     cwd = Path.cwd().resolve()
@@ -733,14 +757,15 @@ def authenticate_tier(target_tier: int, settings: UserSettings) -> bool:
     """If a password is set and tier <= 1, prompt for authentication (persists via session token)."""
     if not settings.auth_password_hash or target_tier > 1:
         return True
-    
+
     from tlm.safety.auth_session import validate_auth_token, create_auth_token
+
     if validate_auth_token():
         return True
-    
+
     import getpass
     from tlm.safety.auth import verify_password
-    
+
     try:
         p = getpass.getpass(f"Tier {target_tier} Access Required. Enter Password: ")
         if verify_password(p, settings.auth_password_hash):
@@ -749,7 +774,7 @@ def authenticate_tier(target_tier: int, settings: UserSettings) -> bool:
         print("Incorrect password.", file=sys.stderr)
     except EOFError:
         print("\nAuthentication required.", file=sys.stderr)
-        
+
     return False
 
 
@@ -766,8 +791,9 @@ def cmd_write_ns(ns: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-    
+
     from tlm.safety.profiles import normalize_profile
+
     profile = normalize_profile(settings.safety_profile)
     if not authenticate_tier(profile.tier, settings):
         return 1
@@ -800,6 +826,7 @@ def cmd_do_ns(ns: argparse.Namespace) -> int:
         return 2
 
     from tlm.safety.profiles import normalize_profile
+
     profile = normalize_profile(settings.safety_profile)
     if not authenticate_tier(profile.tier, settings):
         return 1
@@ -820,6 +847,14 @@ def cmd_do_ns(ns: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    try:
+        from rich_argparse import RichHelpFormatter, RawDescriptionRichHelpFormatter
+        fmt_cls = RichHelpFormatter
+        raw_fmt_cls = RawDescriptionRichHelpFormatter
+    except ImportError:
+        fmt_cls = argparse.HelpFormatter
+        raw_fmt_cls = argparse.RawDescriptionHelpFormatter
+
     p = argparse.ArgumentParser(
         prog="tlm",
         description=(
@@ -828,6 +863,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Ready memory auto-injects into ask unless --clear-context; long-term memory is queried via ```tlm-mem``` "
             "blocks or `tlm harvest`."
         ),
+        formatter_class=fmt_cls,
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
@@ -836,9 +872,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "gui",
         help="Open settings UI (Tk or FLTK; env TLM_GUI=tk|fltk|auto; same as `tlm config gui`).",
-    ).set_defaults(
-        _handler=lambda _: run_gui_safe()
-    )
+    ).set_defaults(_handler=lambda _: run_gui_safe())
 
     p_init = sub.add_parser(
         "init",
@@ -854,7 +888,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not run the setup wizard (also skips the optional prompt when config already exists).",
     )
-    p_init.add_argument("--dry-run", action="store_true", help="Show what would be created without writing.")
+    p_init.add_argument(
+        "--dry-run", action="store_true", help="Show what would be created without writing."
+    )
     p_init.set_defaults(_handler=cmd_init)
 
     p_cfg = sub.add_parser(
@@ -863,7 +899,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cfg_sub = p_cfg.add_subparsers(dest="config_cmd", required=False)
     cfg_sub.add_parser("gui", help="Open window UI (TLM_GUI selects Tk vs FLTK).")
-    cfg_sub.add_parser("migrate-keys", help="Move API keys from config.toml into the OS keyring (needs [secure]).")
+    cfg_sub.add_parser(
+        "migrate-keys", help="Move API keys from config.toml into the OS keyring (needs [secure])."
+    )
     p_cfg.set_defaults(_handler=cmd_config_route)
 
     p_q = sub.add_parser(
@@ -872,7 +910,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_q.add_argument("--session", metavar="SPEC", default=None, help="Keyword or session id")
     p_q.add_argument("--provider", metavar="ID", default=None)
-    p_q.add_argument("--new", action="store_true", help="Start a new session (prompts for one-word name if needed)")
+    p_q.add_argument(
+        "--new",
+        action="store_true",
+        help="Start a new session (prompts for one-word name if needed)",
+    )
     p_q.add_argument(
         "--keyword",
         metavar="WORD",
@@ -888,7 +930,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="clear_context",
         help="Do not inject ready memory for this question",
     )
-    p_q.add_argument("--budget", type=int, default=8000, help="Trim context to ~this many heuristic tokens")
+    p_q.add_argument(
+        "--budget", type=int, default=8000, help="Trim context to ~this many heuristic tokens"
+    )
     p_q.add_argument(
         "--no-tools",
         action="store_true",
@@ -938,7 +982,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="clear_context",
         help="Do not inject ready memory for this question",
     )
-    p_web.add_argument("--budget", type=int, default=8000, help="Trim context to ~this many heuristic tokens")
+    p_web.add_argument(
+        "--budget", type=int, default=8000, help="Trim context to ~this many heuristic tokens"
+    )
     p_web.add_argument(
         "--no-tools",
         action="store_true",
@@ -1035,7 +1081,7 @@ def build_parser() -> argparse.ArgumentParser:
         "sessions",
         help="Interactive TUI when run with no arguments; or list/show/delete/rename/resume.",
         epilog="Examples: `tlm sessions` (picker), `tlm sessions list`, `tlm sessions resume work`.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=raw_fmt_cls,
     )
     sp = p_sess.add_subparsers(dest="sessions_cmd", required=False)
     sp.add_parser("list").set_defaults(_handler=cmd_sessions_dispatch)
@@ -1055,13 +1101,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_sess.set_defaults(_handler=cmd_sessions_route, sessions_cmd=None)
 
     p_new = sub.add_parser("new", help="Create a new session (one-word name); becomes active.")
-    p_new.add_argument("keyword", nargs="?", default=None, help="Session keyword (prompted if omitted)")
-    p_new.add_argument("--dry-run", action="store_true", help="Show what would be created without writing.")
+    p_new.add_argument(
+        "keyword", nargs="?", default=None, help="Session keyword (prompted if omitted)"
+    )
+    p_new.add_argument(
+        "--dry-run", action="store_true", help="Show what would be created without writing."
+    )
     p_new.set_defaults(_handler=cmd_new_ns)
 
-    sub.add_parser("clear", help="Start a fresh conversation context (new active session).").set_defaults(
-        _handler=lambda _: cmd_new_context()
-    )
+    p_mem = sub.add_parser("memory", help="Manage tlm memory (ready items, long-term, rules).")
+    msub = p_mem.add_subparsers(dest="memory_cmd", required=False)
+    
+    # Ready items
+    p_mready = msub.add_parser("ready", help="List or add ready memory items.")
+    p_mready.add_argument("text", nargs="?", help="If provided, add this to ready memory.")
+    
+    # Rules
+    p_mrules = msub.add_parser("rules", help="Manage memory storage rules.")
+    rsub = p_mrules.add_subparsers(dest="rules_cmd", required=False)
+    rsub.add_parser("list", help="List all active memory rules.")
+    p_radd = rsub.add_parser("add", help="Add a new memory rule.")
+    p_radd.add_argument("text", help="Rule description text.")
+    p_radd.add_argument("--type", choices=["store", "never"], default="store", help="Rule type.")
+    p_rdel = rsub.add_parser("delete", help="Delete a memory rule by id.")
+    p_rdel.add_argument("id", help="Rule ID.")
+    rsub.add_parser("reset", help="Reset rules to defaults.")
+    
+    p_mem.add_argument("--dry-run", action="store_true", help="Show what would change.")
+    p_mem.set_defaults(_handler=cmd_memory_ns)
+
+    sub.add_parser(
+        "clear", help="Start a fresh conversation context (new active session)."
+    ).set_defaults(_handler=lambda _: cmd_new_context())
 
     p_auth = sub.add_parser(
         "auth",
@@ -1073,7 +1144,9 @@ def build_parser() -> argparse.ArgumentParser:
     asub.add_parser("login", help="Authenticate and create a persistent session token.")
     asub.add_parser("logout", help="Revoke the current session token.")
     asub.add_parser("status", help="Show current authentication and session status.")
-    p_auth.add_argument("--dry-run", action="store_true", help="Show what would be changed without writing.")
+    p_auth.add_argument(
+        "--dry-run", action="store_true", help="Show what would be changed without writing."
+    )
     p_auth.set_defaults(_handler=cmd_auth_ns)
 
     p_harv = sub.add_parser(
@@ -1094,23 +1167,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_harv.add_argument("--provider", default=None)
     p_harv.set_defaults(_handler=cmd_harvest_ns)
 
-    sub.add_parser("paths", help="Show freelist paths from permissions.toml (global, project, escape grants).").set_defaults(
-        _handler=lambda _: cmd_paths()
-    )
+    sub.add_parser(
+        "paths", help="Show freelist paths from permissions.toml (global, project, escape grants)."
+    ).set_defaults(_handler=lambda _: cmd_paths())
 
     p_allow = sub.add_parser("allow", help="Add a freelist path (RW or --read-only).")
     p_allow.add_argument("path", help="Directory path")
     p_allow.add_argument("--read-only", action="store_true", help="Read-only freelist")
     p_allow.add_argument("--project", action="store_true", help="Scope to current project root")
-    p_allow.add_argument("--project-root", metavar="DIR", default=None, help="Explicit project root")
-    p_allow.add_argument("--dry-run", action="store_true", help="Show what would be added without writing")
+    p_allow.add_argument(
+        "--project-root", metavar="DIR", default=None, help="Explicit project root"
+    )
+    p_allow.add_argument(
+        "--dry-run", action="store_true", help="Show what would be added without writing"
+    )
     p_allow.set_defaults(_handler=cmd_allow_ns)
 
     p_un = sub.add_parser("unallow", help="Remove a path from freelist or escape_grants.")
     p_un.add_argument("path")
     p_un.add_argument("--project", action="store_true")
     p_un.add_argument("--project-root", metavar="DIR", default=None)
-    p_un.add_argument("--dry-run", action="store_true", help="Show what would be removed without writing")
+    p_un.add_argument(
+        "--dry-run", action="store_true", help="Show what would be removed without writing"
+    )
     p_un.set_defaults(_handler=cmd_unallow_ns)
 
     p_upd = sub.add_parser(
@@ -1122,7 +1201,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="update_ref",
         metavar="GIT_REF",
         default=None,
-        help='Git ref (default: latest GitHub release tag), e.g. main',
+        help="Git ref (default: latest GitHub release tag), e.g. main",
     )
     p_upd.add_argument(
         "--version",
@@ -1139,21 +1218,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_upd.set_defaults(_handler=lambda a: cmd_update_ns(a, load_settings()))
 
     p_undo = sub.add_parser("undo", help="Revert the workspace to a previous snapshot.")
-    p_undo.add_argument("snapshot_id", nargs="?", help="Specific snapshot ID. If omitted, prompts with a list of recent snapshots.")
+    p_undo.add_argument(
+        "snapshot_id",
+        nargs="?",
+        help="Specific snapshot ID. If omitted, prompts with a list of recent snapshots.",
+    )
     p_undo.add_argument("--dir", default=".", help="Base directory of the workspace")
     p_undo.add_argument("--list", action="store_true", help="List all available snapshots")
     p_undo.add_argument("--hard", action="store_true", help="Skip confirmation prompt")
-    p_undo.add_argument("--dry-run", action="store_true", help="Show what would be restored without acting")
+    p_undo.add_argument(
+        "--dry-run", action="store_true", help="Show what would be restored without acting"
+    )
     p_undo.set_defaults(_handler=cmd_undo_ns)
 
-    p_stop = sub.add_parser("stop", help="Hard-kill runaway processes and clean up temporary stages.")
+    p_stop = sub.add_parser(
+        "stop", help="Hard-kill runaway processes and clean up temporary stages."
+    )
     p_stop.add_argument("--dir", default=".", help="Base directory of the workspace")
     p_stop.add_argument("--signal", default="KILL", help="Signal to send (TERM, KILL, etc.)")
-    p_stop.add_argument("--dry-run", action="store_true", help="Show what would be stopped without acting")
+    p_stop.add_argument(
+        "--dry-run", action="store_true", help="Show what would be stopped without acting"
+    )
     p_stop.set_defaults(_handler=cmd_stop_ns)
 
     p_versionlog = sub.add_parser("versionlog", help="View the version changes (changelog).")
     p_versionlog.set_defaults(_handler=cmd_versionlog_ns)
+
+    sub.add_parser("wizard", help="Re-run the interactive setup wizard.").set_defaults(
+        _handler=lambda _: cmd_wizard()
+    )
 
     return p
 
@@ -1181,12 +1274,12 @@ def cmd_undo_ns(ns: argparse.Namespace) -> int:
     from rich.console import Console
     from rich.table import Table
     import sys
-    
+
     console = Console()
     base = Path(ns.dir).expanduser().resolve()
-    
+
     snapshots = list_snapshots(base)
-    
+
     if ns.list:
         if not snapshots:
             print("No snapshots found.")
@@ -1197,14 +1290,10 @@ def cmd_undo_ns(ns: argparse.Namespace) -> int:
         table.add_column("Type", style="green")
         table.add_column("Message")
         table.add_column("Date", style="blue")
-        
+
         for i, s in enumerate(snapshots):
             table.add_row(
-                str(i + 1),
-                s.id,
-                "Git" if s.is_git else "File",
-                s.message,
-                time.ctime(s.timestamp)
+                str(i + 1), s.id, "Git" if s.is_git else "File", s.message, time.ctime(s.timestamp)
             )
         console.print(table)
         return 0
@@ -1214,15 +1303,15 @@ def cmd_undo_ns(ns: argparse.Namespace) -> int:
         if not snapshots:
             print("error: no snapshots found.", file=sys.stderr)
             return 2
-        
+
         # Interactive pick
         print(f"Recent snapshots in {base}:")
         for i, s in enumerate(snapshots[:10]):
-            print(f" [{i+1}] {s.id} ({'Git' if s.is_git else 'File'}) - {s.message}")
-        
+            print(f" [{i + 1}] {s.id} ({'Git' if s.is_git else 'File'}) - {s.message}")
+
         try:
             val = input("\nPick a snapshot to restore (1-10) or 'q' to quit: ").strip().lower()
-            if val == 'q' or not val:
+            if val == "q" or not val:
                 return 0
             idx = int(val) - 1
             if 0 <= idx < len(snapshots):
@@ -1241,12 +1330,18 @@ def cmd_undo_ns(ns: argparse.Namespace) -> int:
         return 1
 
     if ns.dry_run:
+        from tlm.safety.snapshot import diff_snapshot
+
         print(f"[DRY-RUN] Would restore snapshot {snapshot_id}: {target.message}")
+        print("--- changes ---")
+        print(diff_snapshot(base, snapshot_id))
         return 0
 
     if not ns.hard:
-        confirm = input(f"Restore workspace to {snapshot_id} ({target.message})? [y/N]: ").strip().lower()
-        if confirm != 'y':
+        confirm = (
+            input(f"Restore workspace to {snapshot_id} ({target.message})? [y/N]: ").strip().lower()
+        )
+        if confirm != "y":
             print("Aborted.")
             return 0
 
@@ -1262,12 +1357,11 @@ def cmd_undo_ns(ns: argparse.Namespace) -> int:
 def cmd_stop_ns(ns: argparse.Namespace) -> int:
     """Hard-kill runaway processes and clean up temporary stages."""
     import signal
-    import os
     import shutil
     from tlm.safety.proctrack import list_processes, kill_all
-    
+
     base = Path(ns.dir).expanduser().resolve()
-    
+
     # Resolve signal
     sig_name = ns.signal.upper()
     if not sig_name.startswith("SIG"):
@@ -1285,7 +1379,7 @@ def cmd_stop_ns(ns: argparse.Namespace) -> int:
         print(f"Found {len(procs)} active processes:")
         for p in procs:
             print(f"  [{p.proc_id[:8]}] PID {p.pid} (PGID {p.pgid}): {' '.join(p.argv)}")
-        
+
         if ns.dry_run:
             print(f"[DRY-RUN] Would send {sig_name} to these process groups.")
         else:
@@ -1300,14 +1394,14 @@ def cmd_stop_ns(ns: argparse.Namespace) -> int:
         else:
             print(f"Cleaning up {tlm_tmp}...")
             try:
-                # We keep the procs dir if we didn't kill anything? 
+                # We keep the procs dir if we didn't kill anything?
                 # No, stop means stop everything.
                 shutil.rmtree(tlm_tmp)
                 tlm_tmp.mkdir(parents=True, exist_ok=True)
             except OSError as e:
                 print(f"error: failed to clean up {tlm_tmp}: {e}")
                 return 1
-            
+
     print("Done.")
     return 0
 
@@ -1316,12 +1410,12 @@ def cmd_auth_ns(ns: argparse.Namespace) -> int:
     import getpass
     from tlm.safety.auth import (
         hash_password,
-        verify_password,
         generate_recovery_key,
         hash_recovery_key,
         verify_recovery_key,
     )
     from tlm.settings import load_settings, save_settings
+    from tlm.cli_auth import authenticate_tier
 
     cmd = getattr(ns, "auth_cmd", None)
     s = load_settings()
@@ -1335,7 +1429,11 @@ def cmd_auth_ns(ns: argparse.Namespace) -> int:
         if p1 != p2:
             print("Passwords do not match.")
             return 2
-        
+
+        if getattr(ns, "dry_run", False):
+            print(f"[DRY-RUN] would set password and generate recovery key for config: {config_file_path()}")
+            return 0
+
         s.auth_password_hash = hash_password(p1)
         rk = generate_recovery_key()
         s.auth_recovery_hash = hash_recovery_key(rk)
@@ -1350,11 +1448,15 @@ def cmd_auth_ns(ns: argparse.Namespace) -> int:
         if not s.auth_recovery_hash or not verify_recovery_key(key, s.auth_recovery_hash):
             print("Invalid recovery key.")
             return 1
-        
+
+        if getattr(ns, "dry_run", False):
+            print("[DRY-RUN] recovery successful (simulated). would prompt for new password.")
+            return 0
+
         print("Recovery successful. Please set a new password.")
-        s.auth_password_hash = None  # temporary unlock
-        save_settings(s)
-        return cmd_auth_ns(argparse.Namespace(auth_cmd="set-password"))
+        # We don't save s.auth_password_hash = None here to avoid persistence without new pass.
+        # Just call set-password directly.
+        return cmd_auth_ns(argparse.Namespace(auth_cmd="set-password", dry_run=False))
 
     if cmd == "login":
         if not s.auth_password_hash:
@@ -1367,15 +1469,17 @@ def cmd_auth_ns(ns: argparse.Namespace) -> int:
 
     if cmd == "logout":
         from tlm.safety.auth_session import revoke_auth_token
+
         revoke_auth_token()
         print("Logged out.")
         return 0
 
     if cmd == "status":
         from tlm.safety.auth_session import get_token_expiry
+
         status = "Password Set" if s.auth_password_hash else "No Password"
         print(f"Auth Status: {status}")
-        
+
         expiry = get_token_expiry()
         if expiry:
             remaining = int((expiry - time.time()) / 60)
@@ -1390,6 +1494,83 @@ def cmd_auth_ns(ns: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_memory_ns(ns: argparse.Namespace) -> int:
+    from tlm.memory_rules import load_memory_rules, save_memory_rules, MemoryRule, DEFAULT_RULES
+    import uuid
+
+    cmd = getattr(ns, "memory_cmd", None)
+    if not cmd:
+        print("Use `tlm memory ready` or `tlm memory rules`.")
+        return 0
+
+    if cmd == "ready":
+        from tlm.memory import load_ready, append_ready
+        from tlm.settings import load_settings
+        if ns.text:
+            if getattr(ns, "dry_run", False):
+                print(f"[DRY-RUN] Would add to ready memory: {ns.text}")
+                return 0
+            st = load_settings()
+            append_ready([ns.text], budget_chars=st.memory_ready_budget_chars)
+            print("Added to ready memory.")
+        else:
+            items = load_ready()
+            if not items:
+                print("Ready memory is empty.")
+            for i, item in enumerate(items, start=1):
+                print(f"{i}. {item}")
+        return 0
+
+    if cmd == "rules":
+        rcmd = getattr(ns, "rules_cmd", "list") or "list"
+        rules = load_memory_rules()
+
+        if rcmd == "list":
+            from rich.console import Console
+            from rich.table import Table
+            console = Console()
+            table = Table(title="Memory Rules")
+            table.add_column("ID", style="cyan")
+            table.add_column("Type", style="magenta")
+            table.add_column("Rule Text")
+            for r in rules:
+                table.add_row(r.id, r.type, r.text)
+            console.print(table)
+            return 0
+
+        if rcmd == "add":
+            if getattr(ns, "dry_run", False):
+                print(f"[DRY-RUN] Would add rule: {ns.text} ({ns.type})")
+                return 0
+            new_id = f"rule_{uuid.uuid4().hex[:8]}"
+            rules.append(MemoryRule(id=new_id, text=ns.text, type=ns.type))
+            save_memory_rules(rules)
+            print(f"Added rule {new_id}")
+            return 0
+
+        if rcmd == "delete":
+            if getattr(ns, "dry_run", False):
+                print(f"[DRY-RUN] Would delete rule: {ns.id}")
+                return 0
+            new_rules = [r for r in rules if r.id != ns.id]
+            if len(new_rules) == len(rules):
+                print(f"error: rule {ns.id} not found.")
+                return 1
+            save_memory_rules(new_rules)
+            print(f"Deleted rule {ns.id}")
+            return 0
+
+        if rcmd == "reset":
+            if getattr(ns, "dry_run", False):
+                print("[DRY-RUN] Would reset rules to defaults.")
+                return 0
+            save_memory_rules(list(DEFAULT_RULES))
+            print("Reset rules to defaults.")
+            return 0
+
+    return 0
+
+
 def cmd_versionlog_ns(ns: argparse.Namespace) -> int:
     try:
         from rich.console import Console
@@ -1397,7 +1578,6 @@ def cmd_versionlog_ns(ns: argparse.Namespace) -> int:
     except ImportError:
         Console = None  # type: ignore
 
-    import os
     from pathlib import Path
     import urllib.request
 
@@ -1422,7 +1602,6 @@ def cmd_versionlog_ns(ns: argparse.Namespace) -> int:
     else:
         print(text)
     return 0
-
 
 
 def main(argv: list[str] | None = None) -> int:

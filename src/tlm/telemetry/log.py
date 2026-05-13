@@ -34,7 +34,12 @@ def scrub_record(obj: Any) -> Any:
         out: dict[str, Any] = {}
         for k, v in obj.items():
             lk = str(k).lower()
-            if lk in _SENSITIVE_KEYS or lk.endswith("_key") or lk.endswith("_token") or lk.endswith("_secret"):
+            if (
+                lk in _SENSITIVE_KEYS
+                or lk.endswith("_key")
+                or lk.endswith("_token")
+                or lk.endswith("_secret")
+            ):
                 out[k] = _REDACT
             else:
                 out[k] = scrub_record(v)
@@ -55,6 +60,7 @@ def scrub_text_line(line: str) -> str:
     except json.JSONDecodeError:
         return _SK_RE.sub(_REDACT, _BEARER_RE.sub("Bearer " + _REDACT, line))
     return json.dumps(scrub_record(row), ensure_ascii=False)
+
 
 MAX_BYTES = 10_000_000
 KEEP_ROTATIONS = 3
@@ -129,7 +135,5 @@ def summarize_usage(*, since_days: int | None) -> str:
         cost_str = f"{v['cost']:.4f}"
         if v["unknown_cost"]:
             cost_str += "+"
-        lines.append(
-            f"{prov}\t{model}\t{int(v['n'])}\t{int(v['in'])}\t{int(v['out'])}\t{cost_str}"
-        )
+        lines.append(f"{prov}\t{model}\t{int(v['n'])}\t{int(v['in'])}\t{int(v['out'])}\t{cost_str}")
     return "\n".join(lines)

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Header, Footer, Static, Button, ContentSwitcher, Label
+from textual.widgets import Header, Footer, Static, Button, ContentSwitcher
 
-from tlm.settings import UserSettings, load_settings, save_settings
-from tlm.safety.permissions import load_permissions_file, save_permissions_file, PermissionsFile
+from tlm.settings import load_settings, save_settings
+from tlm.safety.permissions import load_permissions_file, save_permissions_file
 from tlm.tui.settings import SettingsView
 from tlm.tui.permissions import PermissionsView
+
 
 class TlmConfigApp(App):
     CSS = """
@@ -79,6 +80,7 @@ class TlmConfigApp(App):
         settings_view.apply_settings()
         save_settings(self.settings)
         save_permissions_file(self.perms)
+
 
 def run_tui_app() -> int:
     app = TlmConfigApp()

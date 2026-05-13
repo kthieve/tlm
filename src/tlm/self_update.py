@@ -60,6 +60,68 @@ def parse_slug_from_github_url(url: str) -> str | None:
     return f"{m.group(1)}/{m.group(2)}"
 
 
+def get_slug_from_git_remote(root_path: Path) -> str | None:
+    """Try to extract owner/repo from 'git remote get-url origin'."""
+    try:
+        p = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=root_path,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if p.returncode == 0:
+            return parse_slug_from_github_url(p.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def find_cwd_repo_root() -> Path | None:
+    """Search upward from CWD for a .git folder that contains tlm source."""
+    cwd = Path.cwd().resolve()
+    for ancestor in [cwd, *cwd.parents]:
+        if ancestor == ancestor.anchor:
+            break
+        if (ancestor / ".git").is_dir():
+            # Basic validation: check for tlm-like structure
+            if (ancestor / "src" / "tlm" / "__init__.py").is_file() or (
+                ancestor / "pyproject.toml"
+            ).is_file():
+                return ancestor
+    return None
+
+
+def read_local_repo_version(root_path: Path) -> str | None:
+    """Read version from VERSION file or pyproject.toml in the repo root."""
+    v_file = root_path / "VERSION"
+    if v_file.is_file():
+        try:
+            content = v_file.read_text(encoding="utf-8")
+            # Look for lines like "Dev  0.3.0.dev1"
+            m = re.search(r'^Dev\s+([^\s]+)', content, re.MULTILINE)
+            if m:
+                return m.group(1)
+            # Fallback to any version-like string at start of line
+            m = re.search(r'^([0-9]+\.[0-9]+\.[0-9]+[^\s]*)', content, re.MULTILINE)
+            if m:
+                return m.group(1)
+        except OSError:
+            pass
+    
+    p_file = root_path / "pyproject.toml"
+    if p_file.is_file():
+        try:
+            content = p_file.read_text(encoding="utf-8")
+            m = re.search(r'version\s*=\s*"([^"]+)"', content)
+            if m:
+                return m.group(1)
+        except OSError:
+            pass
+    return None
+
+
 def read_direct_url() -> dict[str, Any] | None:
     try:
         from importlib.metadata import PackageNotFoundError, distribution
@@ -111,6 +173,12 @@ def resolve_github_slug(settings: UserSettings | None) -> str | None:
         slug = slug_from_direct_url(du)
         if slug:
             return slug
+    # Fallback: check CWD git remote
+    root = find_cwd_repo_root()
+    if root:
+        slug = get_slug_from_git_remote(root)
+        if slug:
+            return slug
     return None
 
 
@@ -155,10 +223,7 @@ def pipx_has_tlm() -> bool:
         return False
     if p.returncode != 0:
         return False
-    return any(
-        line.strip().startswith("tlm ")
-        for line in (p.stdout or "").splitlines()
-    )
+    return any(line.strip().startswith("tlm ") for line in (p.stdout or "").splitlines())
 
 
 def current_exe_in_local_tlm_venv() -> bool:
@@ -247,19 +312,21 @@ def run_update(*, slug: str, ref: str, yes: bool) -> int:
         return 2
 
     if kind == "dev":
-        print(
-            "tlm looks like a development / editable checkout; skipping pip/pipx.",
-            file=sys.stderr,
-        )
         root = _git_repo_root()
-        if root is not None:
-            print(f"  cd {root} && git pull && pip install -e .", file=sys.stderr)
-        else:
+        if not yes:
             print(
-                f"  pipx install {shlex.quote(spec)} --force",
+                "tlm looks like a development / editable checkout; skipping automated pipx update.",
                 file=sys.stderr,
             )
-        return 2
+            if root is not None:
+                print(f"  cd {root} && git pull && pip install -e .", file=sys.stderr)
+            else:
+                print(f"  pipx install {shlex.quote(spec)} --force", file=sys.stderr)
+            return 2
+        # If yes=True, we proceed. Standard run_update usually expects a slug/ref.
+        # But for 'dev', we prefer run_local_repo_update if possible.
+        if root:
+            return run_local_repo_update(root, yes=True)
 
     if kind == "pipx":
         pipx = _which("pipx")
@@ -331,7 +398,9 @@ def save_notify_cache(c: UpdateNotifyCache) -> None:
     path = _notify_cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps({"last_check_epoch": c.last_check_epoch, "last_notified_tag": c.last_notified_tag}),
+        json.dumps(
+            {"last_check_epoch": c.last_check_epoch, "last_notified_tag": c.last_notified_tag}
+        ),
         encoding="utf-8",
     )
 
@@ -423,7 +492,107 @@ def maybe_print_update_notice(settings: UserSettings, *, argv0: str | None = Non
     save_notify_cache(cache)
 
 
+def run_local_repo_update(root: Path, yes: bool) -> int:
+    """Pull from git and re-install from local directory."""
+    if not yes:
+        try:
+            msg = f"Found local repository at {root}.\nPull latest from git and re-install? [y/N]: "
+            c = input(msg).strip().lower()
+            if c not in ("y", "yes"):
+                print("Aborted.")
+                return 0
+        except EOFError:
+            print("\nAborted (EOF).")
+            return 1
+
+    # 1. Git pull
+    print(f"Running 'git pull' in {root}...")
+    try:
+        p_pull = subprocess.run(
+            ["git", "pull"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if p_pull.returncode != 0:
+            print(f"tlm: warning: 'git pull' failed.\n{p_pull.stderr.strip()}", file=sys.stderr)
+            
+            local_v = read_local_repo_version(root)
+            if local_v and local_v == __version__:
+                print(f"Local version ({local_v}) matches installed version. Skipping re-install.")
+                return 0
+
+            if not yes:
+                try:
+                    c = (
+                        input(f"Offline/Pull failed. Local version is {local_v or 'unknown'}. Re-install anyway? [y/N]: ")
+                        .strip()
+                        .lower()
+                    )
+                    if c not in ("y", "yes"):
+                        return 1
+                except EOFError:
+                    return 1
+        else:
+            print(p_pull.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"tlm: error: git pull failed: {e}", file=sys.stderr)
+        if not yes:
+            return 1
+
+    # 2. Install
+    kind = infer_install_kind()
+    target_py = sys.executable
+
+    # Venv awareness: if we are in a repo with a .venv, prefer it.
+    local_venv_py = root / ".venv" / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+    if local_venv_py.is_file():
+        target_py = str(local_venv_py)
+        print(f"Detected local venv; using {target_py}")
+    elif sys.prefix == sys.base_prefix:
+        # We are likely in a global env. Check for .venv in CWD if not root.
+        cwd_venv_py = Path.cwd() / ".venv" / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+        if cwd_venv_py.is_file():
+            target_py = str(cwd_venv_py)
+            print(f"Detected CWD venv; using {target_py}")
+
+    if kind == "pipx":
+        pipx = _which("pipx")
+        if not pipx:
+            print("error: pipx not on PATH", file=sys.stderr)
+            return 2
+        cmd = [pipx, "install", str(root), "--force"]
+    elif kind == "tlm_venv":
+        py = VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+        if not py.is_file():
+            print(f"error: missing {py}", file=sys.stderr)
+            return 2
+        cmd = [str(py), "-m", "pip", "install", "-U", str(root)]
+    elif kind == "dev":
+        # Usually 'pip install -e .'
+        cmd = [target_py, "-m", "pip", "install", "-e", str(root)]
+    else:
+        print(f"Detected install kind {kind!r}; attempting default pip install.", file=sys.stderr)
+        cmd = [target_py, "-m", "pip", "install", "-U", str(root)]
+
+    preview = " ".join(shlex.quote(c) for c in cmd)
+    print(f"Running: {preview}")
+    p_inst = subprocess.run(cmd, check=False)
+    return int(p_inst.returncode if p_inst.returncode is not None else 1)
+
+
 def cmd_update_ns(ns: Namespace, settings: UserSettings) -> int:
+    # 1. Check if we are in a local repo
+    root = find_cwd_repo_root()
+    if root:
+        # If user explicitly asked for a ref or version, they might want the GitHub flow.
+        # Otherwise, prioritize the local repo update.
+        if not getattr(ns, "update_ref", None) and not getattr(ns, "update_version", None):
+            return run_local_repo_update(root, yes=bool(ns.yes))
+
+    # 2. Proceed with GitHub-based update
     slug = resolve_github_slug(settings)
     if not slug:
         print(

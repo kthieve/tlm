@@ -15,7 +15,7 @@ TKINTER_UNAVAILABLE_HINT = (
 )
 
 FLTK_UNAVAILABLE_HINT = (
-    "  FLTK UI: pip install \"tlm[gui-fltk]\" and install FLTK development files "
+    '  FLTK UI: pip install "tlm[gui-fltk]" and install FLTK development files '
     "so fltk-config is on PATH (version 1.4.x; e.g. Debian: libfltk1.3-dev or fltk1.4).\n"
     "  Or set TLM_GUI=tk with a Python that includes tkinter."
 )
@@ -71,7 +71,9 @@ def dispatch_gui() -> None:
 
     if pref == "fltk":
         if not fl_ok:
-            raise GuiBackendError("pyfltk not available (or FLTK not built).", hint=FLTK_UNAVAILABLE_HINT)
+            raise GuiBackendError(
+                "pyfltk not available (or FLTK not built).", hint=FLTK_UNAVAILABLE_HINT
+            )
         _run_fltk()
         return
 

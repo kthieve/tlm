@@ -101,7 +101,9 @@ def save_settings(s: UserSettings) -> None:
     lines.append(f"safety_profile = {_toml_escape_str(s.safety_profile)}")
     lines.append(f"memory_enabled = {str(bool(s.memory_enabled)).lower()}")
     lines.append(f"memory_ready_budget_chars = {int(s.memory_ready_budget_chars)}")
-    lines.append(f"memory_auto_harvest_threshold_messages = {int(s.memory_auto_harvest_threshold_messages)}")
+    lines.append(
+        f"memory_auto_harvest_threshold_messages = {int(s.memory_auto_harvest_threshold_messages)}"
+    )
     lines.append(f"memory_harvest_on_switch = {str(bool(s.memory_harvest_on_switch)).lower()}")
     lines.append(f"ask_max_tool_rounds = {_clamp_ask_max_tool_rounds(s.ask_max_tool_rounds)}")
     lines.append(f"web_enabled = {str(bool(s.web_enabled)).lower()}")
@@ -109,9 +111,7 @@ def save_settings(s: UserSettings) -> None:
         lines.append(f"lightpanda_path = {_toml_escape_str(s.lightpanda_path)}")
     lines.append(f"web_dump = {_toml_escape_str(s.web_dump)}")
     lines.append(f"web_obey_robots = {str(bool(s.web_obey_robots)).lower()}")
-    lines.append(
-        f"web_search_obey_robots = {str(bool(s.web_search_obey_robots)).lower()}"
-    )
+    lines.append(f"web_search_obey_robots = {str(bool(s.web_search_obey_robots)).lower()}")
     lines.append(f"web_max_output_chars = {int(s.web_max_output_chars)}")
     lines.append(
         f"web_disable_lightpanda_telemetry = {str(bool(s.web_disable_lightpanda_telemetry)).lower()}"
@@ -123,9 +123,7 @@ def save_settings(s: UserSettings) -> None:
     if s.web_user_agent_suffix is not None:
         lines.append(f"web_user_agent_suffix = {_toml_escape_str(s.web_user_agent_suffix)}")
     lines.append(f"web_concurrency = {_clamp_web_concurrency(s.web_concurrency)}")
-    lines.append(
-        f"web_auto_approve_run = {str(bool(s.web_auto_approve_run)).lower()}"
-    )
+    lines.append(f"web_auto_approve_run = {str(bool(s.web_auto_approve_run)).lower()}")
     lines.append(
         f"web_check_lightpanda_updates = {str(bool(s.web_check_lightpanda_updates)).lower()}"
     )
@@ -167,6 +165,7 @@ def load_settings() -> UserSettings:
         models = {}
     if not isinstance(keys, dict):
         keys = {}
+
     def _bool(key: str, default: bool) -> bool:
         v = data.get(key)
         if v is None:
@@ -183,11 +182,15 @@ def load_settings() -> UserSettings:
         api_keys={str(k): str(v) for k, v in keys.items() if isinstance(v, str)},
         memory_enabled=_bool("memory_enabled", True),
         memory_ready_budget_chars=int(data.get("memory_ready_budget_chars", 800)),
-        memory_auto_harvest_threshold_messages=int(data.get("memory_auto_harvest_threshold_messages", 30)),
+        memory_auto_harvest_threshold_messages=int(
+            data.get("memory_auto_harvest_threshold_messages", 30)
+        ),
         memory_harvest_on_switch=_bool("memory_harvest_on_switch", True),
         ask_max_tool_rounds=_clamp_ask_max_tool_rounds(data.get("ask_max_tool_rounds", 12)),
         web_enabled=_bool("web_enabled", False),
-        lightpanda_path=data.get("lightpanda_path") if isinstance(data.get("lightpanda_path"), str) else None,
+        lightpanda_path=data.get("lightpanda_path")
+        if isinstance(data.get("lightpanda_path"), str)
+        else None,
         web_dump=str(data.get("web_dump", "markdown")),
         web_obey_robots=_bool("web_obey_robots", True),
         web_search_obey_robots=_bool("web_search_obey_robots", False),
@@ -195,22 +198,32 @@ def load_settings() -> UserSettings:
         web_disable_lightpanda_telemetry=_bool("web_disable_lightpanda_telemetry", True),
         web_allow_http=_bool("web_allow_http", False),
         web_search_provider=str(data.get("web_search_provider", "duckduckgo")),
-        web_user_agent=data.get("web_user_agent") if isinstance(data.get("web_user_agent"), str) else None,
+        web_user_agent=data.get("web_user_agent")
+        if isinstance(data.get("web_user_agent"), str)
+        else None,
         web_user_agent_suffix=(
-            data.get("web_user_agent_suffix") if isinstance(data.get("web_user_agent_suffix"), str) else None
+            data.get("web_user_agent_suffix")
+            if isinstance(data.get("web_user_agent_suffix"), str)
+            else None
         ),
         web_concurrency=_clamp_web_concurrency(data.get("web_concurrency", 3)),
         web_auto_approve_run=_bool("web_auto_approve_run", False),
         web_check_lightpanda_updates=_bool("web_check_lightpanda_updates", False),
         check_for_updates=_bool("check_for_updates", False),
         github_repo=data.get("github_repo") if isinstance(data.get("github_repo"), str) else None,
-        auth_password_hash=data.get("auth_password_hash") if isinstance(data.get("auth_password_hash"), str) else None,
-        auth_recovery_hash=data.get("auth_recovery_hash") if isinstance(data.get("auth_recovery_hash"), str) else None,
+        auth_password_hash=data.get("auth_password_hash")
+        if isinstance(data.get("auth_password_hash"), str)
+        else None,
+        auth_recovery_hash=data.get("auth_recovery_hash")
+        if isinstance(data.get("auth_recovery_hash"), str)
+        else None,
     )
 
 
 def warn_config_permissions() -> None:
     """Warn if config.toml is readable by group/other."""
+    if sys.platform == "win32":
+        return
     p = config_file_path()
     if not p.is_file():
         return

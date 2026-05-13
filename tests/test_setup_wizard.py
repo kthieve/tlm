@@ -70,7 +70,9 @@ def test_run_setup_wizard_eof(monkeypatch: pytest.MonkeyPatch, isolated_xdg: Pat
     assert not is_setup_complete()
 
 
-def test_run_setup_wizard_invalid_provider(monkeypatch: pytest.MonkeyPatch, isolated_xdg: Path) -> None:
+def test_run_setup_wizard_invalid_provider(
+    monkeypatch: pytest.MonkeyPatch, isolated_xdg: Path
+) -> None:
     monkeypatch.setenv("TLM_OPENROUTER_API_KEY", "x")
     monkeypatch.setattr(sys, "stdin", _tty_stdin("not-a-real-provider\n"))
     out, code = run_setup_wizard(UserSettings(provider="openrouter"))
@@ -78,7 +80,9 @@ def test_run_setup_wizard_invalid_provider(monkeypatch: pytest.MonkeyPatch, isol
     assert code == 2
 
 
-def test_maybe_first_run_skips_when_complete(monkeypatch: pytest.MonkeyPatch, isolated_xdg: Path) -> None:
+def test_maybe_first_run_skips_when_complete(
+    monkeypatch: pytest.MonkeyPatch, isolated_xdg: Path
+) -> None:
     write_setup_marker()
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     s = maybe_first_run_wizard()
@@ -100,9 +104,12 @@ def test_maybe_first_run_skips_ci(monkeypatch: pytest.MonkeyPatch, isolated_xdg:
     assert not is_setup_complete()
 
 
-def test_maybe_first_run_runs_wizard_when_needed(monkeypatch: pytest.MonkeyPatch, isolated_xdg: Path) -> None:
+def test_maybe_first_run_runs_wizard_when_needed(
+    monkeypatch: pytest.MonkeyPatch, isolated_xdg: Path
+) -> None:
     monkeypatch.setenv("TLM_OPENROUTER_API_KEY", "x")
     monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setattr("tlm.gui.availability.tkinter_available", lambda: False)
     script = "\n\n\n\n\n\n\n"
     monkeypatch.setattr(sys, "stdin", _tty_stdin(script))
     assert not is_setup_complete()
@@ -131,19 +138,7 @@ def test_run_setup_wizard_can_set_multiple_provider_keys(
     openai_idx = ids.index("openai") + 1
 
     # Active provider=openrouter, then set keys for deepseek/openai, then finish key loop.
-    script = (
-        f"{openrouter_idx}\n"
-        f"{deepseek_idx}\n"
-        "deep-key\n"
-        f"{openai_idx}\n"
-        "open-key\n"
-        "\n"
-        "\n"
-        "\n"
-        "\n"
-        "\n"
-        "\n"
-    )
+    script = f"{openrouter_idx}\n{deepseek_idx}\ndeep-key\n{openai_idx}\nopen-key\n\n\n\n\n\n\n"
     monkeypatch.setattr(sys, "stdin", _tty_stdin(script))
     out, code = run_setup_wizard(UserSettings(provider="openrouter"))
     assert code == 0
@@ -152,3 +147,17 @@ def test_run_setup_wizard_can_set_multiple_provider_keys(
     assert saved.provider == "openrouter"
     assert saved.api_keys.get("deepseek") == "deep-key"
     assert saved.api_keys.get("openai") == "open-key"
+
+
+def test_cmd_wizard(monkeypatch: pytest.MonkeyPatch, isolated_xdg: Path) -> None:
+    from tlm.cli import cmd_wizard
+
+    monkeypatch.setenv("TLM_OPENROUTER_API_KEY", "x")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    # Default everything and save.
+    script = "\n\n\n\n\n\n\ny\n"
+    monkeypatch.setattr(sys, "stdin", _tty_stdin(script))
+
+    code = cmd_wizard()
+    assert code == 0
+    assert is_setup_complete()

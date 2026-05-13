@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence, Set
+from typing import Sequence
 from tlm.safety.tools.base import ToolWrapper
 
 

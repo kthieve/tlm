@@ -17,9 +17,31 @@ for pkg in _PKG_MANAGERS:
 
 # Register simple read-only tools
 _SIMPLE_READONLY = [
-    "ls", "dir", "cat", "head", "tail", "less", "more", "pwd", "echo",
-    "which", "whereis", "file", "stat", "id", "whoami", "uname", "date",
-    "uptime", "df", "du", "free", "lscpu", "lspci", "lsusb", "sensors"
+    "ls",
+    "dir",
+    "cat",
+    "head",
+    "tail",
+    "less",
+    "more",
+    "pwd",
+    "echo",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "id",
+    "whoami",
+    "uname",
+    "date",
+    "uptime",
+    "df",
+    "du",
+    "free",
+    "lscpu",
+    "lspci",
+    "lsusb",
+    "sensors",
 ]
 
 for cmd in _SIMPLE_READONLY:

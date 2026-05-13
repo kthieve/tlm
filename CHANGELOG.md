@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0.dev2] - 2026-05-13
+
+### Changed
+
+- **Improved CLI Help**: Switched to `rich-argparse` for prettier, syntax-highlighted help output (requires `rich-argparse` dependency).
+- **Subcommand Formatting**: Enhanced descriptions and layout for all `tlm` subcommands using `RichHelpFormatter`.
+
+## [0.3.0.dev1] - 2026-05-12
+
+### Added
+
+- **Atomic Transactions**: `write` mode now uses a two-phase commit system (via `AtomicTransaction`) to ensure multi-file updates either succeed completely or roll back entirely on failure.
+- **Temporal Snapshots**: Workspace snapshots are now created before destructive operations (`write`, `do`) using `git stash create` for non-destructive capturing of dirty states (or `shutil.copytree` fallback for non-git directories).
+- **Interactive Undo**: `tlm undo` command with an interactive snapshot picker, `--dry-run` with file diffs, and confirmation prompts.
+- **Process Tracking**: Multi-process tracking for `tlm do`; `tlm stop` command to kill all runaway processes in a group.
+- **Auth Sessions**: Token-based authentication with configurable timeouts and master recovery keys to bypass lost passwords.
+- **Dry-Run Parity**: Added `--dry-run` support to `auth`, `init`, `new`, `undo`, and `stop` subcommands.
+
+### Changed
+
+- **Interrupt Handling**: Hardened `openai_compat.py` and `ask_tools.py` to handle `SIGINT` (Ctrl+C) gracefully during model streaming and tool loops, including read timeouts to prevent hangs on high-latency buffers.
+- **Snapshot Logic**: Moved from destructive `git add .` to `git stash create`, preserving untracked files and the working index.
+
+
 ## [0.2.0.dev5] - 2026-04-21
 
 ### Added

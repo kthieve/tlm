@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 from tlm.settings import UserSettings
 from tlm.web.lightpanda_release import (
-    download_release_binary,
     fetch_latest_release,
     pick_asset_download_url,
     preferred_asset_basename,

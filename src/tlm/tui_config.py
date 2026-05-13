@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import sys
 
-from tlm.providers.registry import REAL_PROVIDER_IDS, list_remote_model_ids, normalize_provider_id, resolved_model
+from tlm.providers.registry import (
+    REAL_PROVIDER_IDS,
+    list_remote_model_ids,
+    normalize_provider_id,
+    resolved_model,
+)
 from tlm.self_update import format_config_header_status, format_version_update_status
-from tlm.settings import UserSettings, config_file_path, load_settings, merged_api_key, save_settings
+from tlm.settings import (
+    UserSettings,
+    config_file_path,
+    load_settings,
+    merged_api_key,
+    save_settings,
+)
 from tlm.web.lightpanda_release import (
     RELEASES_PAGE,
     compare_status,
@@ -33,7 +44,10 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
         print(f"  lightpanda_path: {s.lightpanda_path or '(use PATH)'}", flush=True)
         print(f"  web_user_agent: {s.web_user_agent or '(unset)'}", flush=True)
         print(f"  web_user_agent_suffix: {s.web_user_agent_suffix or '(unset)'}", flush=True)
-        print(f"  web_check_lightpanda_updates (GUI auto-check): {s.web_check_lightpanda_updates}", flush=True)
+        print(
+            f"  web_check_lightpanda_updates (GUI auto-check): {s.web_check_lightpanda_updates}",
+            flush=True,
+        )
         print(f"  Local: {describe_local_install(s).replace(chr(10), ' / ')}", flush=True)
         print("  1) Edit flags / path", flush=True)
         print("  2) Check GitHub latest release (read-only)", flush=True)
@@ -66,16 +80,22 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
                 if c in ("y", "yes"):
                     s.lightpanda_path = None
                     dirty = True
-            ac = input(
-                f"web_check_lightpanda_updates (GUI) [y/N] ({s.web_check_lightpanda_updates}): "
-            ).strip().lower()
+            ac = (
+                input(
+                    f"web_check_lightpanda_updates (GUI) [y/N] ({s.web_check_lightpanda_updates}): "
+                )
+                .strip()
+                .lower()
+            )
             if ac in ("y", "yes"):
                 s.web_check_lightpanda_updates = True
                 dirty = True
             elif ac in ("n", "no"):
                 s.web_check_lightpanda_updates = False
                 dirty = True
-            ua = input(f"web_user_agent (empty to keep; current [{s.web_user_agent or ''}]): ").strip()
+            ua = input(
+                f"web_user_agent (empty to keep; current [{s.web_user_agent or ''}]): "
+            ).strip()
             if ua:
                 s.web_user_agent = ua
                 dirty = True
@@ -106,9 +126,13 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
             else:
                 print(f"error: {data}", flush=True)
         elif sub == "3":
-            c = input(
-                "Download ~120MB+ from GitHub into ~/.local/share/tlm/bin/lightpanda and set path? [y/N]: "
-            ).strip().lower()
+            c = (
+                input(
+                    "Download ~120MB+ from GitHub into ~/.local/share/tlm/bin/lightpanda and set path? [y/N]: "
+                )
+                .strip()
+                .lower()
+            )
             if c not in ("y", "yes"):
                 continue
             ok, msg, dest = install_latest_to_data_dir(s, timeout=120.0)
@@ -149,9 +173,15 @@ def run_config_tui() -> int:
         print(f"  m) memory enabled      [{s.memory_enabled}]", flush=True)
         print("  w) Web / Lightpanda (`tlm-web`, updates, install)", flush=True)
         print(f"     ready budget chars  [{s.memory_ready_budget_chars}]", flush=True)
-        print(f"     auto-harvest every  [{s.memory_auto_harvest_threshold_messages}] msgs", flush=True)
+        print(
+            f"     auto-harvest every  [{s.memory_auto_harvest_threshold_messages}] msgs",
+            flush=True,
+        )
         print(f"     harvest on switch   [{s.memory_harvest_on_switch}]", flush=True)
-        print(f"  u) check GitHub updates [{s.check_for_updates}]  repo [{s.github_repo or '(auto)'}]", flush=True)
+        print(
+            f"  u) check GitHub updates [{s.check_for_updates}]  repo [{s.github_repo or '(auto)'}]",
+            flush=True,
+        )
         print("  v) Version / tlm update status (queries GitHub if possible)", flush=True)
         print("  8) Save and exit", flush=True)
         print("  9) Exit without saving", flush=True)
@@ -270,7 +300,11 @@ def run_config_tui() -> int:
                     dirty = True
                 except ValueError:
                     print("invalid int", file=sys.stderr)
-            v4 = input(f"harvest previous session on switch [y/N] ({s.memory_harvest_on_switch}): ").strip().lower()
+            v4 = (
+                input(f"harvest previous session on switch [y/N] ({s.memory_harvest_on_switch}): ")
+                .strip()
+                .lower()
+            )
             if v4 in ("y", "yes"):
                 s.memory_harvest_on_switch = True
                 dirty = True
@@ -285,7 +319,11 @@ def run_config_tui() -> int:
             except EOFError:
                 pass
         elif choice == "u":
-            v = input(f"notify on new GitHub releases [y/N] ({s.check_for_updates}): ").strip().lower()
+            v = (
+                input(f"notify on new GitHub releases [y/N] ({s.check_for_updates}): ")
+                .strip()
+                .lower()
+            )
             if v in ("y", "yes"):
                 s.check_for_updates = True
                 dirty = True

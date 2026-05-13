@@ -150,7 +150,7 @@ def test_split_reply_tools_web() -> None:
 
 
 def test_split_invalid_web_keeps_block() -> None:
-    text = 'X\n```tlm-web\nnot json\n```'
+    text = "X\n```tlm-web\nnot json\n```"
     v, _, _, webs = split_reply_tools(text)
     assert webs == []
     assert "not json" in v

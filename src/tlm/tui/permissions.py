@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Label, Static, DataTable, Button, Input
-from tlm.safety.permissions import PermissionsFile, ProjectOverride
+from textual.widgets import Label, Static, DataTable, Button
+from tlm.safety.permissions import PermissionsFile
+
 
 class PermissionsView(Static):
     def __init__(self, perms: PermissionsFile, **kwargs):
@@ -36,5 +37,5 @@ class PermissionsView(Static):
             table.add_row("Escape Grant", p)
 
     # TODO: Implement on_button_pressed to handle add/remove with modals
-    # For now, this is a visual upgrade. 
+    # For now, this is a visual upgrade.
     # Adding modals in Textual requires push_screen.

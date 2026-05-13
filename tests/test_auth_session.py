@@ -1,7 +1,5 @@
-import json
 import time
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from tlm.safety.auth_session import (
@@ -23,14 +21,14 @@ def test_create_and_validate(temp_token_file):
     token = create_auth_token(ttl_minutes=10)
     assert token is not None
     assert temp_token_file.exists()
-    
+
     assert validate_auth_token() is True
     assert get_token_expiry() > time.time()
 
 
 def test_expiry(temp_token_file):
     create_auth_token(ttl_minutes=10)
-    
+
     # Mock time to be 11 minutes in the future
     with patch("time.time", return_value=time.time() + 660):
         assert validate_auth_token() is False

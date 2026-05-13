@@ -4,8 +4,8 @@
 #   rc   — 1.0.0rc1, … (release candidate)
 #   post — 1.0.0.post1 (post-release / packaging hotfix; "p" in informal shorthand)
 #
-# Dev line = in-tree / daily work (pyproject [project].version on main).
+# Dev 0.3.0.dev1 = in-tree / daily work (pyproject [project].version on main).
 # Beta line = last tagged beta (or next beta target); bump bN when cutting a beta release.
 
-Dev  0.2.0.dev8
+Dev  0.3.0.dev2
 Beta 0.2.0b4

@@ -16,19 +16,6 @@ ITEM_MAX_LEN = 240
 READY_FILE = "ready.json"
 LONGTERM_FILE = "longterm.jsonl"
 
-# Shown in help / GUI
-STORAGE_RULES_TEXT = """What to store
-- OS / distro, desktop, locale, timezone (generic)
-- CPU / GPU / RAM summary, shell, editor preferences
-- Stable project paths the user volunteered, workflow preferences, tool versions
-
-Never store
-- API keys, tokens, passwords, private keys, JWTs, bearer strings
-- SSH private keys or BEGIN … PRIVATE KEY blocks
-- High-entropy KEY=value env-style secrets
-- URLs with embedded credentials (user:pass@)
-
-Items are capped in length; obvious secrets are rejected or redacted."""
 
 _BEARER = re.compile(r"\bBearer\s+[A-Za-z0-9._\-+/=]{20,}", re.I)
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
@@ -262,7 +249,9 @@ def add_longterm(
     return ent
 
 
-def update_longterm(entry_id: str, *, text: str | None = None, tags: list[str] | None = None) -> bool:
+def update_longterm(
+    entry_id: str, *, text: str | None = None, tags: list[str] | None = None
+) -> bool:
     entries = _read_all_longterm()
     for i, e in enumerate(entries):
         if e.id == entry_id:

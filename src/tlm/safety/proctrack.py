@@ -30,7 +30,7 @@ def register_process(base_dir: Path, pid: int, pgid: int, argv: list[str]) -> st
     proc_id = str(uuid.uuid4())
     proc_dir = _get_proc_dir(base_dir)
     proc_file = proc_dir / f"{proc_id}.json"
-    
+
     info = {
         "proc_id": proc_id,
         "pid": pid,
@@ -38,7 +38,7 @@ def register_process(base_dir: Path, pid: int, pgid: int, argv: list[str]) -> st
         "argv": argv,
         "cwd": str(base_dir.resolve()),
     }
-    
+
     proc_file.write_text(json.dumps(info), encoding="utf-8")
     return proc_id
 
@@ -62,7 +62,7 @@ def list_processes(base_dir: Path) -> list[ProcInfo]:
     """Return all active tracked processes, pruning stale ones."""
     proc_dir = _get_proc_dir(base_dir)
     results: list[ProcInfo] = []
-    
+
     for p in proc_dir.glob("*.json"):
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
@@ -73,11 +73,11 @@ def list_processes(base_dir: Path) -> list[ProcInfo]:
                 p.unlink()  # Stale
         except (json.JSONDecodeError, KeyError, OSError):
             continue
-            
+
     return results
 
 
-def kill_all(base_dir: Path, sig: int = signal.SIGKILL) -> int:
+def kill_all(base_dir: Path, sig: int = getattr(signal, "SIGKILL", signal.SIGTERM)) -> int:
     """Kill all tracked process groups. Returns count of PIDs signaled."""
     procs = list_processes(base_dir)
     count = 0

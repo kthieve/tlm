@@ -89,7 +89,9 @@ def _collect_path_checks(
     denied = False
     sess = session_rw_paths()
     for c in commands:
-        use_cwd = Path(str(c["cwd"])).expanduser().resolve() if c.get("cwd") else default_cwd.resolve()
+        use_cwd = (
+            Path(str(c["cwd"])).expanduser().resolve() if c.get("cwd") else default_cwd.resolve()
+        )
         argv = c["argv"]
         for p in [use_cwd, *path_like_args(argv)]:
             k = classify_path(
@@ -143,7 +145,9 @@ def run_do(
     argvs = [c["argv"] for c in commands]
     for argv in argvs:
         if argv_has_elevation(argv):
-            print("root guard: elevation helpers (sudo/doas/…) are not allowed in tlm do.", flush=True)
+            print(
+                "root guard: elevation helpers (sudo/doas/…) are not allowed in tlm do.", flush=True
+            )
             log_root_event({"argv": argv, "cwd": str(cwd)})
             return DoResult(4)
 
@@ -192,7 +196,9 @@ def run_do(
             net_approved = ans in ("y", "yes")
 
     for argv in argvs:
-        ok, reason = check_argv_with_network(argv, network_mode=ep.network_mode, net_approved=net_approved)
+        ok, reason = check_argv_with_network(
+            argv, network_mode=ep.network_mode, net_approved=net_approved
+        )
         if not ok:
             print(f"safety: {reason}\n  argv={argv}")
             return DoResult(4)
@@ -236,6 +242,7 @@ def run_do(
 
     if profile in (SafetyProfile.standard, SafetyProfile.strict):
         from tlm.safety.snapshot import create_snapshot
+
         sid = create_snapshot(cwd)
         if sid:
             print(f"snapshot created: {sid}", flush=True)
@@ -268,10 +275,11 @@ def run_do(
                 shell=False,
                 start_new_session=True,
             )
-            
+
             from tlm.safety.proctrack import register_process, unregister_process
+
             proc_id = register_process(cwd, proc.pid, os.getpgid(proc.pid), argv)
-            
+
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
             except (subprocess.TimeoutExpired, KeyboardInterrupt) as e:

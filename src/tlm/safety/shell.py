@@ -93,7 +93,7 @@ def check_argv(argv: list[str]) -> tuple[bool, str]:
     ok, reason = check_command_line(line)
     if not ok:
         return ok, reason
-    
+
     # Modular tool validation
     cmd = argv[0].split("/")[-1]
     wrapper = get_tool_wrapper(cmd)
@@ -101,7 +101,7 @@ def check_argv(argv: list[str]) -> tuple[bool, str]:
         ok_tool, reason_tool = wrapper.validate(argv)
         if not ok_tool:
             return False, f"{cmd} tool policy: {reason_tool or 'blocked'}"
-            
+
     return True, ""
 
 

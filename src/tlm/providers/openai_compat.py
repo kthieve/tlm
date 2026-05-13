@@ -29,7 +29,7 @@ DEFAULT_MODELS: dict[str, str] = {
 
 
 def _models_headers(provider_id: str, api_key: str) -> dict[str, str]:
-    h = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+    h = {"Authorization": f"Bearer {api_key.strip()}", "Accept": "application/json"}
     if provider_id == "openrouter":
         h["HTTP-Referer"] = "https://github.com/tlm-cli/tlm"
         h["X-Title"] = "tlm"
@@ -64,7 +64,9 @@ def fetch_remote_model_ids(
                 data = r.json()
         except httpx.HTTPStatusError as e:
             txt = e.response.text[:500] if e.response is not None else ""
-            raise RuntimeError(f"HTTP {e.response.status_code if e.response else '?'}: {txt}") from e
+            raise RuntimeError(
+                f"HTTP {e.response.status_code if e.response else '?'}: {txt}"
+            ) from e
         except httpx.RequestError as e:
             last_err = e
             if attempt < 2:
@@ -114,7 +116,7 @@ class OpenAICompatProvider:
         return f"{b}/chat/completions"
 
     def _headers(self) -> dict[str, str]:
-        h = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        h = {"Authorization": f"Bearer {self.api_key.strip()}", "Content-Type": "application/json"}
         if self.id == "openrouter":
             h["HTTP-Referer"] = "https://github.com/tlm-cli/tlm"
             h["X-Title"] = "tlm"
@@ -127,7 +129,9 @@ class OpenAICompatProvider:
         out.append({"role": "user", "content": prompt})
         return out
 
-    def _payload_messages(self, messages: list[dict[str, str]], *, system: str | None) -> list[dict[str, str]]:
+    def _payload_messages(
+        self, messages: list[dict[str, str]], *, system: str | None
+    ) -> list[dict[str, str]]:
         out: list[dict[str, str]] = []
         if system:
             out.append({"role": "system", "content": system})
@@ -177,7 +181,9 @@ class OpenAICompatProvider:
                     return r.json()
             except httpx.HTTPStatusError as e:
                 txt = e.response.text[:500] if e.response is not None else ""
-                raise RuntimeError(f"HTTP {e.response.status_code if e.response else '?'}: {txt}") from e
+                raise RuntimeError(
+                    f"HTTP {e.response.status_code if e.response else '?'}: {txt}"
+                ) from e
             except httpx.RequestError as e:
                 last_err = e
                 if attempt < 3:

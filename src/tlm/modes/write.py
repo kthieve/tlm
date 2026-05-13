@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import difflib
 import json
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -113,7 +111,11 @@ def run_write(
             if spec["executable"]:
                 current_mode = 0o755
 
-        diff = _diff_text(rel, old, spec["contents"]) if old else f"(new file {rel}, {len(spec['contents'])} bytes)\n"
+        diff = (
+            _diff_text(rel, old, spec["contents"])
+            if old
+            else f"(new file {rel}, {len(spec['contents'])} bytes)\n"
+        )
         previews.append(diff)
         resolved.append((target, spec["contents"], spec["executable"], rel, current_mode))
 
@@ -147,10 +149,10 @@ def run_write(
     from tlm.settings import load_settings
     from tlm.safety.profiles import SafetyProfile, normalize_profile
     from tlm.safety.snapshot import create_snapshot
-    
+
     s = settings or load_settings()
     profile = normalize_profile(s.safety_profile)
-    
+
     if profile in (SafetyProfile.standard, SafetyProfile.strict):
         sid = create_snapshot(base)
         if sid:
@@ -164,12 +166,12 @@ def run_write(
             print(f"error: invalid octal mode {extra_mode!r}, using default.")
 
     from tlm.safety.transaction import AtomicTransaction
-    
+
     with AtomicTransaction(base) as txn:
         try:
             for target, contents, _, _, _ in resolved:
                 txn.stage(target, contents, final_mode)
-            
+
             written = txn.commit()
             for target in written:
                 rel = target.relative_to(base)

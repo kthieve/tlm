@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from tlm.memory import (
-    STORAGE_RULES_TEXT,
     add_longterm,
     append_ready,
     is_safe_to_store,
     redact,
 )
+from tlm.memory_rules import format_rules_for_prompt
 from tlm.session import Session, save_session
 
 if TYPE_CHECKING:
@@ -66,7 +66,7 @@ Return ONLY a JSON array of strings (max {max_items} items). Each string <= 200 
 Do not include secrets: no API keys, passwords, tokens, private keys, JWTs, bearer strings.
 
 Storage guidance:
-{STORAGE_RULES_TEXT}
+{format_rules_for_prompt()}
 
 If there is nothing worth saving, return [].
 """
@@ -101,11 +101,7 @@ def apply_harvest_items(
                 first_summary = t
         else:
             skipped += 1
-    if (
-        push_ready_summary
-        and first_summary
-        and settings.memory_enabled
-    ):
+    if push_ready_summary and first_summary and settings.memory_enabled:
         append_ready([first_summary], budget_chars=settings.memory_ready_budget_chars)
     return added, skipped
 
@@ -129,7 +125,9 @@ def auto_harvest_session_if_due(
     except Exception:
         return
     if items:
-        apply_harvest_items(items, source_session=sess.id, settings=settings, push_ready_summary=True)
+        apply_harvest_items(
+            items, source_session=sess.id, settings=settings, push_ready_summary=True
+        )
     sess.last_harvested_at = datetime.now(timezone.utc).isoformat()
     sess.message_count_at_last_harvest = len(sess.messages)
     save_session(sess)

@@ -5,7 +5,9 @@ from tlm.cli import KNOWN_SUBCOMMANDS, main
 
 
 def test_help_exits_zero() -> None:
-    r = subprocess.run([sys.executable, "-m", "tlm", "--help"], capture_output=True, text=True, check=False)
+    r = subprocess.run(
+        [sys.executable, "-m", "tlm", "--help"], capture_output=True, text=True, check=False
+    )
     assert r.returncode == 0
     assert "Terminal LLM" in r.stdout or "tlm" in r.stdout
 

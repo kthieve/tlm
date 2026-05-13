@@ -22,10 +22,16 @@ from tlm.memory import (
     load_ready,
     save_ready,
 )
+from tlm.memory_rules import load_memory_rules, save_memory_rules, MemoryRule, DEFAULT_RULES
 from tlm.providers.registry import REAL_PROVIDER_IDS, get_provider
 from tlm.self_update import format_version_update_status
-from tlm.safety.permissions import load_permissions_file, permissions_file_path, save_permissions_file
+from tlm.safety.permissions import (
+    load_permissions_file,
+    permissions_file_path,
+    save_permissions_file,
+)
 from tlm.safety.profiles import SafetyProfile, normalize_profile
+from tlm.safety.root_guard import is_euid_root
 from tlm.session import (
     delete_session,
     list_sessions,
@@ -105,7 +111,9 @@ def run_gui() -> None:
     style.configure("Treeview.Heading", font=small_font)
     style.map("Treeview", background=[("selected", "#2563eb")])
     try:
-        style.configure("Accent.TButton", foreground="#ffffff", background="#2563eb", padding=(12, 6))
+        style.configure(
+            "Accent.TButton", foreground="#ffffff", background="#2563eb", padding=(12, 6)
+        )
         style.map("Accent.TButton", background=[("active", "#1d4ed8"), ("pressed", "#1e40af")])
     except tk.TclError:
         style.configure("Accent.TButton", padding=(12, 6))
@@ -120,7 +128,9 @@ def run_gui() -> None:
         fg=_FG_MUTED,
         bg=_BG_HEADER,
     ).pack(side=tk.LEFT, padx=(10, 0))
-    tk.Label(header, text=f"v{__version__}", font=small_font, fg=_FG_MUTED, bg=_BG_HEADER).pack(side=tk.RIGHT)
+    tk.Label(header, text=f"v{__version__}", font=small_font, fg=_FG_MUTED, bg=_BG_HEADER).pack(
+        side=tk.RIGHT
+    )
 
     outer = ttk.Frame(root, padding=(14, 12))
     outer.pack(fill=tk.BOTH, expand=True)
@@ -149,7 +159,11 @@ def run_gui() -> None:
 
     ttk.Label(lf_keys, text="Provider").grid(row=0, column=0, sticky="w", pady=(0, 6))
     prov_box = ttk.Combobox(
-        lf_keys, textvariable=prov_var, values=["stub", *REAL_PROVIDER_IDS], state="readonly", width=32
+        lf_keys,
+        textvariable=prov_var,
+        values=["stub", *REAL_PROVIDER_IDS],
+        state="readonly",
+        width=32,
     )
     prov_box.grid(row=0, column=1, sticky="w", pady=(0, 6))
     prov_box.bind("<<ComboboxSelected>>", load_key_for_provider)
@@ -183,7 +197,9 @@ def run_gui() -> None:
 
     bf = ttk.Frame(lf_keys)
     bf.grid(row=2, column=1, sticky="e", pady=(14, 0))
-    ttk.Button(bf, text="Save", command=save_keys, style="Accent.TButton").pack(side=tk.RIGHT, padx=(6, 0))
+    ttk.Button(bf, text="Save", command=save_keys, style="Accent.TButton").pack(
+        side=tk.RIGHT, padx=(6, 0)
+    )
     ttk.Button(bf, text="Test connection", command=test_keys).pack(side=tk.RIGHT)
     load_key_for_provider()
 
@@ -209,7 +225,9 @@ def run_gui() -> None:
         variable=web_en_var,
     ).grid(row=0, column=0, columnspan=3, sticky="w")
     ttk.Label(lf_web, text="lightpanda_path").grid(row=1, column=0, sticky="w", pady=(10, 0))
-    ttk.Entry(lf_web, textvariable=lp_path_var, width=52).grid(row=1, column=1, sticky="we", pady=(10, 0))
+    ttk.Entry(lf_web, textvariable=lp_path_var, width=52).grid(
+        row=1, column=1, sticky="we", pady=(10, 0)
+    )
 
     def browse_lightpanda() -> None:
         p = filedialog.askopenfilename(title="Select lightpanda binary")
@@ -225,9 +243,13 @@ def run_gui() -> None:
         variable=web_auto_check_var,
     ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
     ttk.Label(lf_web, text="web_user_agent").grid(row=3, column=0, sticky="w", pady=(10, 0))
-    ttk.Entry(lf_web, textvariable=web_ua_var, width=52).grid(row=3, column=1, sticky="we", pady=(10, 0))
+    ttk.Entry(lf_web, textvariable=web_ua_var, width=52).grid(
+        row=3, column=1, sticky="we", pady=(10, 0)
+    )
     ttk.Label(lf_web, text="web_user_agent_suffix").grid(row=4, column=0, sticky="w", pady=(8, 0))
-    ttk.Entry(lf_web, textvariable=web_ua_suffix_var, width=52).grid(row=4, column=1, sticky="we", pady=(8, 0))
+    ttk.Entry(lf_web, textvariable=web_ua_suffix_var, width=52).grid(
+        row=4, column=1, sticky="we", pady=(8, 0)
+    )
     ttk.Label(
         lf_web,
         text="Compatibility passthrough only. Does not bypass anti-bot checks.",
@@ -396,9 +418,9 @@ def run_gui() -> None:
 
     wf = ttk.Frame(tab_web)
     wf.grid(row=2, column=0, sticky="ew", pady=(10, 0))
-    ttk.Button(wf, text="Save web settings", command=save_web_settings, style="Accent.TButton").pack(
-        side=tk.LEFT, padx=(0, 8)
-    )
+    ttk.Button(
+        wf, text="Save web settings", command=save_web_settings, style="Accent.TButton"
+    ).pack(side=tk.LEFT, padx=(0, 8))
     ttk.Button(wf, text="Refresh status", command=refresh_lp_status).pack(side=tk.LEFT, padx=(0, 8))
     ttk.Button(wf, text="Download / update binary", command=download_lightpanda_gui).pack(
         side=tk.LEFT, padx=(0, 8)
@@ -491,7 +513,9 @@ def run_gui() -> None:
     lf_json.columnconfigure(0, weight=1)
     lf_json.rowconfigure(0, weight=1)
 
-    txt = scrolledtext.ScrolledText(lf_json, height=10, wrap=tk.WORD, font=mono, relief=tk.FLAT, padx=6, pady=6)
+    txt = scrolledtext.ScrolledText(
+        lf_json, height=10, wrap=tk.WORD, font=mono, relief=tk.FLAT, padx=6, pady=6
+    )
     txt.grid(row=0, column=0, sticky="nsew")
 
     def refresh_sessions() -> None:
@@ -586,19 +610,22 @@ def run_gui() -> None:
     tab_mem.rowconfigure(1, weight=1)
     tab_mem.rowconfigure(2, weight=1)
 
-    lf_rules = ttk.LabelFrame(tab_mem, text="Storage rules", padding=(8, 6))
+    lf_rules = ttk.LabelFrame(tab_mem, text="Storage guidance", padding=(8, 6))
     lf_rules.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
-    lf_rules.columnconfigure(0, weight=1)
-    rules_txt = scrolledtext.ScrolledText(lf_rules, height=6, wrap=tk.WORD, font=small_font, relief=tk.FLAT)
-    rules_txt.grid(row=0, column=0, sticky="nsew")
-    rules_txt.insert(tk.END, STORAGE_RULES_TEXT)
-    rules_txt.configure(state=tk.DISABLED)
+    tk.Label(
+        lf_rules,
+        text="Refer to the 'Memory Rules' tab to manage what tlm is allowed to store.",
+        bg=_BG_PAGE,
+        font=small_font,
+    ).pack(pady=10)
 
     lf_ready = ttk.LabelFrame(tab_mem, text="Ready memory (injected into ask)", padding=(8, 6))
     lf_ready.grid(row=1, column=0, sticky="nsew", pady=(0, 8))
     lf_ready.columnconfigure(0, weight=1)
     lf_ready.rowconfigure(0, weight=1)
-    ready_edit = scrolledtext.ScrolledText(lf_ready, height=8, wrap=tk.WORD, font=mono, relief=tk.FLAT)
+    ready_edit = scrolledtext.ScrolledText(
+        lf_ready, height=8, wrap=tk.WORD, font=mono, relief=tk.FLAT
+    )
 
     def refresh_ready_editor() -> None:
         ready_edit.delete("1.0", tk.END)
@@ -617,7 +644,9 @@ def run_gui() -> None:
         messagebox.showinfo("tlm", "Saved ready memory.")
 
     ready_edit.grid(row=0, column=0, sticky="nsew")
-    ttk.Button(lf_ready, text="Save ready memory", command=save_ready_gui).grid(row=1, column=0, sticky="e", pady=(6, 0))
+    ttk.Button(lf_ready, text="Save ready memory", command=save_ready_gui).grid(
+        row=1, column=0, sticky="e", pady=(6, 0)
+    )
     refresh_ready_editor()
 
     lf_lt = ttk.LabelFrame(tab_mem, text="Long-term memory", padding=(8, 6))
@@ -665,20 +694,88 @@ def run_gui() -> None:
     ttk.Button(lbf, text="Refresh", command=refresh_longterm).pack(side=tk.RIGHT)
     refresh_longterm()
 
+    # --- Memory Rules ---
+    tab_mrules = ttk.Frame(nb, padding=12)
+    nb.add(tab_mrules, text="Memory Rules")
+    tab_mrules.columnconfigure(0, weight=1)
+    tab_mrules.rowconfigure(0, weight=1)
+
+    lf_r = ttk.LabelFrame(tab_mrules, text="Memory storage rules (store vs never)", padding=(8, 6))
+    lf_r.grid(row=0, column=0, sticky="nsew")
+    lf_r.columnconfigure(0, weight=1)
+    lf_r.rowconfigure(0, weight=1)
+
+    r_cols = ("id", "type", "text")
+    r_tree = ttk.Treeview(lf_r, columns=r_cols, show="headings", height=12)
+    for c, w in zip(r_cols, (120, 80, 450), strict=False):
+        r_tree.heading(c, text=c.title())
+        r_tree.column(c, width=w, stretch=True)
+    r_tree.grid(row=0, column=0, sticky="nsew")
+    rsb = ttk.Scrollbar(lf_r, orient=tk.VERTICAL, command=r_tree.yview)
+    rsb.grid(row=0, column=1, sticky="ns")
+    r_tree.configure(yscrollcommand=rsb.set)
+
+    def refresh_rules_gui() -> None:
+        r_tree.delete(*r_tree.get_children())
+        for r in load_memory_rules():
+            r_tree.insert("", tk.END, values=(r.id, r.type, r.text))
+
+    def rule_add() -> None:
+        import uuid
+        t = simpledialog.askstring("tlm", "Rule text:", parent=root)
+        if not t:
+            return
+        rtype = messagebox.askquestion("tlm", "Is this a 'Never Store' rule?", type=messagebox.YESNOCANCEL)
+        if rtype == "cancel":
+            return
+        
+        kind = "never" if rtype == "yes" else "store"
+        rules = load_memory_rules()
+        rules.append(MemoryRule(id=f"rule_{uuid.uuid4().hex[:8]}", text=t, type=kind))
+        save_memory_rules(rules)
+        refresh_rules_gui()
+
+    def rule_delete() -> None:
+        sel = r_tree.selection()
+        if not sel:
+            return
+        rid = str(r_tree.item(sel[0], "values")[0])
+        rules = load_memory_rules()
+        new_rules = [r for r in rules if r.id != rid]
+        save_memory_rules(new_rules)
+        refresh_rules_gui()
+
+    def rule_reset() -> None:
+        if messagebox.askyesno("tlm", "Reset all rules to defaults?"):
+            save_memory_rules(list(DEFAULT_RULES))
+            refresh_rules_gui()
+
+    rbf = ttk.Frame(tab_mrules)
+    rbf.grid(row=1, column=0, sticky="e", pady=(8, 0))
+    ttk.Button(rbf, text="Add Rule", command=rule_add).pack(side=tk.LEFT, padx=(0, 6))
+    ttk.Button(rbf, text="Delete", command=rule_delete).pack(side=tk.LEFT, padx=(0, 6))
+    ttk.Button(rbf, text="Reset to Defaults", command=rule_reset).pack(side=tk.LEFT, padx=(0, 6))
+    ttk.Button(rbf, text="Refresh", command=refresh_rules_gui).pack(side=tk.RIGHT)
+    refresh_rules_gui()
+
     # --- Usage ---
     tab_use = ttk.Frame(nb, padding=12)
     nb.add(tab_use, text="Usage")
     tab_use.rowconfigure(0, weight=1)
     tab_use.columnconfigure(0, weight=1)
 
-    use_txt = scrolledtext.ScrolledText(tab_use, wrap=tk.NONE, font=mono, relief=tk.FLAT, padx=8, pady=8)
+    use_txt = scrolledtext.ScrolledText(
+        tab_use, wrap=tk.NONE, font=mono, relief=tk.FLAT, padx=8, pady=8
+    )
     use_txt.grid(row=0, column=0, sticky="nsew")
 
     def refresh_usage() -> None:
         use_txt.delete("1.0", tk.END)
         use_txt.insert(tk.END, summarize_usage(since_days=30))
 
-    ttk.Button(tab_use, text="Refresh", command=refresh_usage).grid(row=1, column=0, sticky="e", pady=(8, 0))
+    ttk.Button(tab_use, text="Refresh", command=refresh_usage).grid(
+        row=1, column=0, sticky="e", pady=(8, 0)
+    )
     refresh_usage()
 
     # --- Logs ---
@@ -687,7 +784,9 @@ def run_gui() -> None:
     tab_log.rowconfigure(0, weight=1)
     tab_log.columnconfigure(0, weight=1)
 
-    log_txt = scrolledtext.ScrolledText(tab_log, wrap=tk.NONE, font=mono, relief=tk.FLAT, padx=8, pady=8)
+    log_txt = scrolledtext.ScrolledText(
+        tab_log, wrap=tk.NONE, font=mono, relief=tk.FLAT, padx=8, pady=8
+    )
     log_txt.grid(row=0, column=0, sticky="nsew")
 
     def refresh_logs() -> None:
@@ -700,7 +799,9 @@ def run_gui() -> None:
         tail = "\n".join(scrub_text_line(ln) for ln in lines[-400:])
         log_txt.insert(tk.END, tail)
 
-    ttk.Button(tab_log, text="Refresh", command=refresh_logs).grid(row=1, column=0, sticky="e", pady=(8, 0))
+    ttk.Button(tab_log, text="Refresh", command=refresh_logs).grid(
+        row=1, column=0, sticky="e", pady=(8, 0)
+    )
     refresh_logs()
 
     # --- Permissions ---
@@ -709,7 +810,7 @@ def run_gui() -> None:
     tab_perm.columnconfigure(0, weight=1)
     tab_perm.rowconfigure(2, weight=1)
 
-    if os.geteuid() == 0:
+    if is_euid_root():
         ttk.Label(
             tab_perm,
             text="Warning: GUI running as root — use least privilege when possible.",
@@ -720,7 +821,12 @@ def run_gui() -> None:
     lf_prof.grid(row=1, column=0, sticky="ew", pady=(0, 8))
     prof_var = tk.StringVar(value=load_settings().safety_profile)
     ttk.Label(lf_prof, text="Profile").grid(row=0, column=0, sticky="w", padx=(0, 12))
-    prof = ttk.Combobox(lf_prof, textvariable=prof_var, values=["strict", "standard", "trusted", "sandbox"], width=22)
+    prof = ttk.Combobox(
+        lf_prof,
+        textvariable=prof_var,
+        values=["strict", "standard", "trusted", "sandbox"],
+        width=22,
+    )
     prof.grid(row=0, column=1, sticky="w")
     rp = normalize_profile(prof_var.get())
     root_note = (
@@ -728,7 +834,9 @@ def run_gui() -> None:
         if rp != SafetyProfile.trusted
         else "Root policy: trusted — system paths require the CLI phrase gate."
     )
-    ttk.Label(lf_prof, text=root_note, wraplength=720).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
+    ttk.Label(lf_prof, text=root_note, wraplength=720).grid(
+        row=1, column=0, columnspan=2, sticky="w", pady=(8, 0)
+    )
 
     def save_profile() -> None:
         s = load_settings()
@@ -740,7 +848,9 @@ def run_gui() -> None:
         row=2, column=1, sticky="e", pady=(12, 0)
     )
 
-    lf_pe = ttk.LabelFrame(tab_perm, text=f"permissions.toml — {permissions_file_path()}", padding=(12, 10))
+    lf_pe = ttk.LabelFrame(
+        tab_perm, text=f"permissions.toml — {permissions_file_path()}", padding=(12, 10)
+    )
     lf_pe.grid(row=2, column=0, sticky="nsew")
     lf_pe.columnconfigure(0, weight=1)
     lf_pe.columnconfigure(1, weight=1)
@@ -835,7 +945,9 @@ def run_gui() -> None:
     ttk.Button(bf_ro, text="Add (browse)", command=add_ro).pack(side=tk.LEFT, padx=(0, 6))
     ttk.Button(bf_ro, text="Remove", command=del_ro).pack(side=tk.LEFT)
 
-    ttk.Label(lf_pe, text="Persisted escape grants").grid(row=5, column=0, columnspan=2, sticky="w", pady=(12, 0))
+    ttk.Label(lf_pe, text="Persisted escape grants").grid(
+        row=5, column=0, columnspan=2, sticky="w", pady=(12, 0)
+    )
     lb_eg.grid(row=6, column=0, columnspan=2, sticky="ew")
 
     def del_eg() -> None:
@@ -859,9 +971,9 @@ def run_gui() -> None:
         save_permissions_file(pf)
         messagebox.showinfo("tlm", "Saved permissions.toml settings.")
 
-    ttk.Button(lf_pe, text="Save network/sandbox", command=save_perm_file, style="Accent.TButton").grid(
-        row=8, column=1, sticky="e", pady=(12, 0)
-    )
+    ttk.Button(
+        lf_pe, text="Save network/sandbox", command=save_perm_file, style="Accent.TButton"
+    ).grid(row=8, column=1, sticky="e", pady=(12, 0))
     reload_perm_lists()
 
     foot = ttk.Frame(outer)

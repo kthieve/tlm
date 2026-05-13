@@ -51,9 +51,7 @@ def summarize_fetch_text(body: str, *, dump: str) -> tuple[str, str, int]:
     d = (dump or "markdown").lower().strip()
     n = len(body or "")
     if d == "html":
-        t = re.search(
-            r"<title[^>]*>([^<]+)</title>", body or "", flags=re.IGNORECASE | re.DOTALL
-        )
+        t = re.search(r"<title[^>]*>([^<]+)</title>", body or "", flags=re.IGNORECASE | re.DOTALL)
         title = _collapse_ws(t.group(1)) if t else ""
         if not title:
             h = re.search(r"<h1[^>]*>([^<]+)</h1>", body or "", flags=re.IGNORECASE)
@@ -113,9 +111,7 @@ def format_web_feedback(
             err = r.error or r.status
             lines.append(f"{i}. (failed: {err}) — {u}")
         else:
-            lines.append(
-                f"{i}. {r.title} — {u} ({r.char_count} chars, exit {r.exit_code})"
-            )
+            lines.append(f"{i}. {r.title} — {u} ({r.char_count} chars, exit {r.exit_code})")
     parts: list[str] = ["\n".join(lines), ""]
     for r in results:
         prev = r.job.preview
@@ -123,9 +119,7 @@ def format_web_feedback(
             parts.append(f"User declined web: {r.job.label}\n")
             continue
         if r.status in ("error", "timeout"):
-            parts.append(
-                f"$ {prev}\n(error: {r.error or r.status})\n"
-            )
+            parts.append(f"$ {prev}\n(error: {r.error or r.status})\n")
             continue
         body = _truncate_for_model(r.body, max_chars)
         if r.snippet and r.status == "done":
@@ -141,9 +135,7 @@ def _plain_progress_line(i: int, n: int, phase: str, host: str, extra: str = "")
     print(msg, file=sys.stderr, flush=True)
 
 
-def _execute_one(
-    job: FetchJob, run_argv: RunArgvFn, dump: str
-) -> FetchResult:
+def _execute_one(job: FetchJob, run_argv: RunArgvFn, dump: str) -> FetchResult:
     """Run one fetch in a worker thread; map timeouts / errors to FetchResult."""
     t0 = time.perf_counter()
     try:
@@ -229,16 +221,17 @@ def run_web_batch(
                             idx + 1, n, "done", _host(r.job.url), f"{r.char_count} chars"
                         )
                     else:
-                        _plain_progress_line(
-                            idx + 1, n, r.status, _host(r.job.url)
-                        )
+                        _plain_progress_line(idx + 1, n, r.status, _host(r.job.url))
                 except Exception as e:  # noqa: BLE001
                     results[idx0] = FetchResult(
                         job=jobs[idx0],
                         status="error",
                         error=str(e),
                     )
-        return [r if r is not None else FetchResult(jobs[i], "error", error="missing") for i, r in enumerate(results)]  # type: ignore[return-value]
+        return [
+            r if r is not None else FetchResult(jobs[i], "error", error="missing")
+            for i, r in enumerate(results)
+        ]  # type: ignore[return-value]
 
     # Rich Live
     try:
@@ -350,7 +343,7 @@ def run_web_batch(
     pcon.print(
         Panel(
             "\n".join(
-                f"{i+1}. [{r.status}] {(r.title or '')[:50]} — {_short_url(jobs[i].url)}"
+                f"{i + 1}. [{r.status}] {(r.title or '')[:50]} — {_short_url(jobs[i].url)}"
                 for i, r in enumerate(out)
             ),
             title="tlm-web summary (heuristic titles)",

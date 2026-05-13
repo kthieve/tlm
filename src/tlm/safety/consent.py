@@ -57,7 +57,11 @@ def prompt_escape(
                 return "session"
             if ans == "persist":
                 return _confirm_persist(items)
-        print("unrecognized; try once" + ("" if prof == SafetyProfile.strict else ", session, persist") + ", cancel")
+        print(
+            "unrecognized; try once"
+            + ("" if prof == SafetyProfile.strict else ", session, persist")
+            + ", cancel"
+        )
 
 
 def _confirm_persist(items: list[tuple[str, str]]) -> EscapeChoice:

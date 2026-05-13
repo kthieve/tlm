@@ -18,6 +18,7 @@
 | `src/tlm/jsonutil.py` | Extract JSON from LLM output |
 | `src/tlm/completion.py` | bash/zsh/fish completion snippets |
 | `src/tlm/telemetry/log.py` | JSONL request log + rotation + `summarize_usage` |
+| `src/tlm/self_update.py` | `tlm update` — GitHub release checks and local repo `git pull` updates |
 | `src/tlm/telemetry/prices.py` | Rough USD/token pricing |
 | `src/tlm/providers/base.py` | `LLMProvider` protocol (`complete`, `chat`, `stream`, `count_tokens`) |
 | `src/tlm/providers/stub.py` | Offline stub |
