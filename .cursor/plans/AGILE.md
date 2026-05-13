@@ -50,11 +50,23 @@ We use **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ---
 
-## 3. The Planning Shard System
+## 3. Development Folder & Tracking
+
+For every **Minor** or **Major** version change (e.g., v0.3.0 → v0.4.0), developers must:
+1. Create a dedicated folder: `.cursor/plans/development/Dev X.Y.Z - <Name>`.
+2. Maintain modular tracking files within this folder:
+   - `tasklist.md`: Component-level TODOs and sprint status.
+   - `subversion_details.md`: Tracking of minor patches and internal version shifts.
+   - `sprint_N_feature.md`: Granular phase-level planning for specific features.
+3. Link to these files from the main milestone document in `.cursor/plans/version/vX.Y.Z_name.md`.
+
+---
+
+## 4. The Planning Shard System
 See [`.cursor/plans/shards/README.md`](./shards/README.md) for detailed instructions.
 Shards are the "connective tissue" between versions. They ensure Feature A remains compatible with the future Feature G.
 
 ---
 
-## 4. The AI Codex (CODE_INDEX.md)
+## 5. The AI Codex (CODE_INDEX.md)
 The primary navigation tool. AI Agents MUST use the Codex to locate files instead of scanning the full directory tree. This saves context and improves accuracy.

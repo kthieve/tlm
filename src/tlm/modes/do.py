@@ -40,16 +40,9 @@ from tlm.safety.tools import get_tool_wrapper
 from tlm.settings import UserSettings, load_settings
 
 
-_DO_SYSTEM = """You are tlm's execution planner for Linux.
-Reply with ONLY a JSON object (no markdown) of this exact shape:
-{"commands":[{"argv":["executable","arg1"],"cwd":null,"env":{},"why":"short reason"}],"dangerous":false}
-Rules:
-- argv MUST be a non-empty list of strings suitable for subprocess (no shell).
-- Prefer read-only diagnostic commands when the user only asked for information.
-- cwd is optional string path or null for default.
-- env is optional mapping of extra env vars (keep empty unless strictly needed).
-- If you cannot safely propose commands, return {"commands":[],"dangerous":true}.
-"""
+from tlm.prompts import load_prompt
+
+_DO_SYSTEM = load_prompt("do", "system")
 
 
 @dataclass

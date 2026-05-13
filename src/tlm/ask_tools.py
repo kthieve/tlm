@@ -39,108 +39,22 @@ TLM_WEB_PATTERN = re.compile(
 TLM_MEM_PROPOSE_PATTERN = re.compile(
     r"```tlm-mem-propose\s*\n(\{[\s\S]*?\})\s*\n```", re.IGNORECASE
 )
+TLM_WRITE_PATTERN = re.compile(
+    r"```tlm-write\s*\n(\[[\s\S]*?\]|\{[\s\S]*?\})\s*\n```", re.IGNORECASE
+)
 
 # Default cap for `tlm ask` tool loop; overridden by `ask_max_tool_rounds` in config (clamped 2–32).
 DEFAULT_ASK_MAX_TOOL_ROUNDS = 12
 
-SYSTEM_PLAIN = """You are tlm, a helpful Linux-oriented assistant.
+from tlm.prompts import load_prompt
 
-If the user asks to create, write, or modify files, or execute state-modifying commands, inform them that you are currently in "ask" (read-only) mode. Instruct them to exit and use `tlm write <request>` for file operations or `tlm do <request>` for executing commands."""
-
-SYSTEM_TOOLS = """You are tlm, a helpful Linux-oriented assistant.
-
-When you need live facts from the user's machine (OS version, CPU, memory, etc.), you may ask them to run **read-only** shell commands by including one or more fenced blocks exactly like:
-
-```tlm-exec
-["lsb_release", "-a"]
-```
-
-Rules:
-- Each block is valid JSON: a JSON array of strings — one argv list (no shell, no pipes in a single block).
-- Prefer short diagnostics: `uname`, `lsb_release`, `cat /proc/version`, `nproc`, `lscpu`, `free`, `sensors`, etc.
-- Never suggest destructive or privileged commands (no rm, dd, mkfs, curl|bash, sudo, writes under /etc).
-- Only use `tlm-exec` when the question needs live local machine facts. For general knowledge/web/content questions, answer directly and avoid shell diagnostics.
-- After the user provides command output, answer concisely. Avoid new `tlm-exec` blocks unless you still lack critical facts (keep rounds minimal).
-- If the user explicitly asks to create, write, or modify files, or run state-modifying commands (like `mkdir`), do NOT output manual shell commands like `cat > file`. Instead, inform them they are in "ask" mode and should use `tlm write <request>` for files or `tlm do <request>` for executing commands.
-"""
-
-MEM_BLOCK_HELP = """
-You may query stored **long-term memory** (read-only) with a fenced block:
-
-```tlm-mem
-{"op": "search", "q": "short search query"}
-```
-
-Use this when recalling stable facts the user may have stored earlier. Keep queries short.
-"""
-
-MEM_PROPOSE_HELP = """
-If you discover a stable user preference or fact that isn't covered by current rules, you may propose a **new memory rule**:
-
-```tlm-mem-propose
-{"text": "Prefer using 'neovim' over 'vim'", "type": "store"}
-```
-
-Type can be "store" or "never". Only propose rules for stable, long-term preferences.
-"""
-
-WEB_BLOCK_HELP = (
-    """
-You may fetch **public web pages** (read-only) when the user needs current facts from the internet. Use fenced blocks:
-
-```tlm-web
-{"op": "fetch", "url": "https://example.com/article"}
-```
-
-```tlm-web
-{"op": "search", "q": "short search query"}
-```
-
-Optional search provider override:
-
-```tlm-web
-{"op": "search", "q": "short search query", "provider": "duckduckgo"}
-```
-
-**Batch (preferred)** — one fence, one user confirmation for the whole list:
-
-```tlm-web
-[
-  {"op": "search", "q": "topic"},
-  {"op": "fetch", "url": "https://example.com/page"}
-]
-```
-
-`provider` supports `duckduckgo` or `brave` (both are **HTML search URLs** fetched only via **Lightpanda** — the live search page, not a separate HTTP API). If omitted, tlm uses `web_search_provider` from config (default: `duckduckgo`).
-
-DuckDuckGo/Brave **search** pages are often disallowed in `robots.txt`. By default **`web_search_obey_robots` is `false`**, so `search` does not pass `--obey-robots` to Lightpanda (unblocked HTML). Direct **`fetch` URLs** still use **`web_obey_robots`** (default `true`). Set `web_search_obey_robots = true` if you need strict robots for search, or set global `web_obey_robots = false` to also relax fetches.
-
-**`tlm-web` always uses Lightpanda** for both `search` and `fetch`: install the `lightpanda` binary (or set `lightpanda_path`). There is no other built-in **HTML** search in `tlm-web` (no Google/Bing URL shortcuts): use `fetch` for a user-supplied or known `https` URL if needed.
-
-**Policy / "robot" detection:** Automated loading of public search UIs (DDG, Brave) is still machine traffic; sites may cap or block it. There is no supported way in tlm to "pass as" a human. For **contractually clear** search, use a provider’s **official search API** (e.g. Brave) with an API key under their terms — that path is not part of this ```tlm-web``` **Lightpanda** block; do not promise undetectable scraping. Do not advise hiding automation from sites.
-
-**User-Agent passthrough (compatibility only):** if set in config, tlm can pass `web_user_agent` (or `web_user_agent_suffix`) to Lightpanda fetch for compatibility allowlists. This is not anti-bot evasion and may still be blocked by site rules/fingerprints.
-
-**Also use `tlm-web`** whenever the user needs real web pages or search results — prefer **`search`** to discover URLs, then **`fetch`** on the best links. Do **not** substitute `tlm-exec` + `curl` for search-result pages or multi-page research; reserve **`tlm-exec` + curl/wget** for tiny one-off GETs (single known URL, small static/JSON) when that is clearly enough.
-
-Prefer **https** URLs. **Group** `search` + several `fetch` ops **in one** ```tlm-web``` array when you can. The user approves in one step (**[1] this batch**, **[2] trust this tlm run** = no more web prompts, **[3] per-URL**). Multiple fetches run in **parallel** (up to `web_concurrency` in `config.toml`, default 3). Keep tool rounds minimal; use `tlm-exec` for local machine diagnostics or the occasional minimal HTTP GET only. Set `web_auto_approve_run = true` in config to skip web prompts for the whole process.
-
-If web tools are unavailable (`web_enabled` false, Lightpanda missing, or network blocked), do **not** loop forever: answer offline, say what is missing, suggest enabling `web_enabled`, installing Lightpanda, or pasting URLs/text.
-"""
-    + f"Each **tool feedback** cycle counts toward `ask_max_tool_rounds` in config.toml "
-    f"(default **{DEFAULT_ASK_MAX_TOOL_ROUNDS}**). After **search + fetches**, prefer **one** final answer "
-    "without new ```tlm-web``` blocks unless essential.\n\n"
-    "For **time-sensitive** questions (prices, “today”, breaking news), use **`tlm-web` `search`** then **`fetch`** on sources; use `curl` only as a rare supplement for a single simple URL.\n"
-)
-
-# Shown in the system prompt when ask runs with web=True but setup prevents ```tlm-web``` from running.
-WEB_PREREQ_DISABLED = """\
-**Web tools requested**, but `web_enabled` is **false** in config.toml. Tell the user to set `web_enabled = true`, install the **lightpanda** binary (or set `lightpanda_path`), then retry. Do **not** say you have no “live web” in general — explain this configuration step.
-"""
-
-WEB_PREREQ_NO_LIGHTPANDA = """\
-`web_enabled` is **true**, but the **lightpanda** binary was **not** found (install it or set `lightpanda_path` in config). ```tlm-web``` will not run until then: https://github.com/lightpanda-io/browser — Do **not** claim a generic lack of web access; explain that Lightpanda must be installed for `tlm-web`.
-"""
+SYSTEM_PLAIN = load_prompt("ask", "system_plain")
+SYSTEM_TOOLS = load_prompt("ask", "system_tools")
+MEM_BLOCK_HELP = load_prompt("memory", "block_help")
+MEM_PROPOSE_HELP = load_prompt("memory", "propose_help")
+WEB_BLOCK_HELP = load_prompt("web", "block_help")
+WEB_PREREQ_DISABLED = load_prompt("web", "prereq_disabled")
+WEB_PREREQ_NO_LIGHTPANDA = load_prompt("web", "prereq_no_lightpanda")
 
 
 def split_reply_tools(
@@ -151,8 +65,9 @@ def split_reply_tools(
     list[dict[str, object]],
     list[dict[str, object]],
     list[dict[str, object]],
+    list[dict[str, object]],
 ]:
-    """Remove well-formed ```tlm-exec```, ```tlm-mem```, ```tlm-web```, ```tlm-mem-propose``` blocks from visible text."""
+    """Remove well-formed ```tlm-exec```, ```tlm-mem```, ```tlm-web```, ```tlm-mem-propose```, ```tlm-write``` blocks from visible text."""
     matches: list[tuple[str, int, int, str]] = []
     for m in TLM_EXEC_PATTERN.finditer(content):
         matches.append(("exec", m.start(), m.end(), m.group(1)))
@@ -162,12 +77,15 @@ def split_reply_tools(
         matches.append(("web", m.start(), m.end(), m.group(1)))
     for m in TLM_MEM_PROPOSE_PATTERN.finditer(content):
         matches.append(("mem-propose", m.start(), m.end(), m.group(1)))
+    for m in TLM_WRITE_PATTERN.finditer(content):
+        matches.append(("write", m.start(), m.end(), m.group(1)))
     matches.sort(key=lambda x: x[1])
 
     argvs: list[list[str]] = []
     mem_ops: list[dict[str, object]] = []
     web_ops: list[dict[str, object]] = []
     mem_proposals: list[dict[str, object]] = []
+    write_ops: list[dict[str, object]] = []
     out_chunks: list[str] = []
     pos = 0
     for kind, start, end, body in matches:
@@ -209,16 +127,23 @@ def split_reply_tools(
                 and all(isinstance(x, dict) for x in data)
             ):
                 web_ops.extend(data)
+            elif kind == "write":
+                if isinstance(data, dict):
+                    write_ops.append(data)
+                elif isinstance(data, list) and all(isinstance(x, dict) for x in data):
+                    write_ops.extend(data)
+                else:
+                    out_chunks.append(content[start:end])
             else:
                 out_chunks.append(content[start:end])
     out_chunks.append(content[pos:])
     visible = "".join(out_chunks).strip()
-    return visible, argvs, mem_ops, web_ops, mem_proposals
+    return visible, argvs, mem_ops, web_ops, mem_proposals, write_ops
 
 
 def split_reply_and_execs(content: str) -> tuple[str, list[list[str]]]:
     """Backward-compatible: visible text + argv lists only."""
-    v, a, _, _, _ = split_reply_tools(content)
+    v, a, _, _, _, _ = split_reply_tools(content)
     return v, a
 
 
@@ -273,6 +198,100 @@ def _mem_propose_feedback(proposals: list[dict[str, object]]) -> str:
         else:
             parts.append("(rule proposal rejected by user)")
     
+    return "\n\n".join(parts).strip()
+
+
+def _write_feedback(
+    write_ops: list[dict[str, object]],
+    *,
+    pcon,
+    RichPanel,
+    RichConfirm,
+    use_rich: bool,
+    settings: UserSettings,
+) -> str:
+    from pathlib import Path
+    from tlm.modes.write import _under_base, _diff_text
+    from tlm.safety import interactive_gate_string
+    from tlm.safety.profiles import SafetyProfile, normalize_profile
+    from tlm.safety.snapshot import create_snapshot
+    from tlm.safety.transaction import AtomicTransaction
+    import sys
+
+    parts: list[str] = []
+    base_dir = Path.cwd()
+
+    for op in write_ops:
+        rel = str(op.get("path", "")).strip()
+        contents = str(op.get("contents", ""))
+        ex = bool(op.get("executable", False))
+
+        if not rel:
+            parts.append("(tlm-write missing path)")
+            continue
+
+        target = (base_dir / rel).resolve()
+        if not _under_base(target, base_dir):
+            parts.append(f"(tlm-write error: path escapes base dir: {rel!r})")
+            continue
+
+        old = ""
+        current_mode = 0o644
+        if target.is_file():
+            old = target.read_text(encoding="utf-8")
+            current_mode = target.stat().st_mode & 0o777
+        elif target.exists():
+            parts.append(f"(tlm-write error: exists but is not a file: {rel!r})")
+            continue
+        else:
+            if ex:
+                current_mode = 0o755
+
+        diff = (
+            _diff_text(rel, old, contents)
+            if old
+            else f"(new file {rel}, {len(contents)} bytes)\n"
+        )
+
+        body = f"--- proposed write: {rel} ---\n{diff}"
+        
+        # Interactive prompt using gate
+        dec, _, extra_mode = interactive_gate_string(
+            body,
+            allow_edit=False,
+            dry_run=False,
+            auto_yes=False,
+            can_auto_yes=False,
+            extra_prompt=f"Target octal permissions for {rel} (default {oct(current_mode)[2:]})",
+        )
+
+        if dec == "cancel":
+            parts.append(f"(User declined writing to {rel})")
+            continue
+
+        profile = normalize_profile(settings.safety_profile)
+        if profile in (SafetyProfile.standard, SafetyProfile.strict):
+            sid = create_snapshot(base_dir)
+            if sid:
+                print(f"snapshot created: {sid}", flush=True)
+
+        final_mode = current_mode
+        if extra_mode:
+            try:
+                final_mode = int(extra_mode, 8)
+            except ValueError:
+                print(f"error: invalid octal mode {extra_mode!r}, using default.", file=sys.stderr)
+
+        with AtomicTransaction(base_dir) as txn:
+            try:
+                txn.stage(target, contents, final_mode)
+                txn.commit()
+                print(f"wrote {rel} (mode {oct(final_mode)})", flush=True)
+                parts.append(f"(File {rel} written successfully)")
+            except Exception as e:
+                print(f"error: transaction failed: {e}", flush=True)
+                parts.append(f"(tlm-write error: failed to write {rel}: {e})")
+
     return "\n\n".join(parts).strip()
 
 
@@ -715,7 +734,7 @@ def _build_system_prompt(
     ready_block = ""
     if memory_enabled and not clear_context and ready_items:
         pruned = prune_ready_to_budget(ready_items, ready_budget)
-        ready_block = format_ready_for_prompt(pruned) + "\n"
+        ready_block = load_prompt("ask", "memory_ready_hint") + "\n" + format_ready_for_prompt(pruned) + "\n"
     base = SYSTEM_TOOLS if tools else SYSTEM_PLAIN
     mem_help = (MEM_BLOCK_HELP + "\n") if memory_enabled else ""
     propose_help = (MEM_PROPOSE_HELP + "\n") if memory_enabled else ""
@@ -746,11 +765,7 @@ def run_interactive_ask(
     """
     effective_user_message = user_message
     if web_focus:
-        effective_user_message = (
-            f"{user_message}\n\n"
-            "Note: Invoked as **`tlm web`** — answer with ```tlm-web``` (`search` then `fetch` on result URLs) "
-            "when Lightpanda is available; do not refuse live web without checking tool availability."
-        )
+        effective_user_message = f"{user_message}\n\n{load_prompt('web', 'web_focus_note')}"
     elif web and settings.web_enabled:
         # Nudge live-web behavior for clearly time-sensitive prompts.
         if re.search(
@@ -758,11 +773,7 @@ def run_interactive_ask(
             user_message,
             flags=re.IGNORECASE,
         ):
-            effective_user_message = (
-                f"{user_message}\n\n"
-                "Note: Time-sensitive — use `tlm-web` (`search` then `fetch`) via **Lightpanda** for web pages; "
-                "avoid curl for search results; `tlm-exec` curl only for a trivial single-URL GET if enough."
-            )
+            effective_user_message = f"{user_message}\n\n{load_prompt('web', 'time_sensitive_note')}"
 
     append_user(sess, effective_user_message)
     msgs: list[dict[str, str]] = [
@@ -785,9 +796,7 @@ def run_interactive_ask(
 
     web_note = ""
     if web_prompt:
-        web_note = "Session: **`tlm-web` is Lightpanda-only** — use it for `search` and `fetch`; do not use HTTP search APIs or curl for search-result pages here."
-        if web_focus:
-            web_note += " User ran **`tlm web`** — emit ```tlm-web``` `search` first for this question, then `fetch` the best URLs."
+        web_note = load_prompt("web", "session_note")
 
     sys_prompt = _build_system_prompt(
         tools,
@@ -832,7 +841,7 @@ def run_interactive_ask(
             append_assistant(sess, reply)
             msgs.append({"role": "assistant", "content": reply})
 
-            visible, argvs, mem_ops, web_ops, mem_proposals = split_reply_tools(reply)
+            visible, argvs, mem_ops, web_ops, mem_proposals, write_ops = split_reply_tools(reply)
             mem_fb = _mem_feedback(mem_ops) if (memory_on and mem_ops) else ""
             propose_fb = (
                 _mem_propose_feedback(mem_proposals)
@@ -843,20 +852,44 @@ def run_interactive_ask(
             tty = sys.stdin.isatty()
             exec_wanted = bool(tools and argvs)
             web_wanted = bool(web and web_ops)
+            write_wanted = bool(write_ops)
+
+            pcon, RichPanel, RichConfirm = _rich_prompt_kit()
+            use_rich = pcon is not None and RichPanel is not None and RichConfirm is not None
+
+            write_fb = ""
+            if write_wanted and tty:
+                write_fb = _write_feedback(
+                    write_ops,
+                    pcon=pcon,
+                    RichPanel=RichPanel,
+                    RichConfirm=RichConfirm,
+                    use_rich=use_rich,
+                    settings=settings,
+                )
 
             feedback_parts: list[str] = []
             if mem_fb:
                 feedback_parts.append(mem_fb)
             if propose_fb:
                 feedback_parts.append(propose_fb)
+            if write_fb:
+                feedback_parts.append(write_fb)
 
-            non_tty_blocks = (exec_wanted or web_wanted) and not tty
-            if non_tty_blocks and not mem_fb:
+            write_skip_note = (
+                "*(File writing tools were skipped: stdin is not a TTY. "
+                "Run in a real terminal to approve file creation.)*"
+            )
+
+            non_tty_blocks = (exec_wanted or web_wanted or write_wanted) and not tty
+            if non_tty_blocks and not mem_fb and not write_fb:
                 notes: list[str] = []
                 if exec_wanted:
                     notes.append(shell_skip_note)
                 if web_wanted:
                     notes.append(web_skip_note)
+                if write_wanted:
+                    notes.append(write_skip_note)
                 note = "\n\n".join(notes)
                 print_markdown(
                     (visible if visible.strip() else reply) + ("\n\n" + note if note else "")

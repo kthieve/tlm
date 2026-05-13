@@ -544,13 +544,13 @@ def cmd_usage(ns: argparse.Namespace) -> int:
 
 def cmd_init(ns: argparse.Namespace) -> int:
     """Ensure XDG dirs exist; write default config.toml if missing."""
-    from tlm.config import data_dir, sessions_dir, state_dir
+    from tlm.config import data_dir, prompts_dir, sessions_dir, state_dir
 
     p = config_file_path()
     if getattr(ns, "dry_run", False):
         print("tlm init [DRY RUN]:")
         print(
-            f"  would create/ensure dirs: {p.parent}, {data_dir()}, {sessions_dir()}, {state_dir()}"
+            f"  would create/ensure dirs: {p.parent}, {prompts_dir()}, {data_dir()}, {sessions_dir()}, {state_dir()}"
         )
         if not p.is_file():
             print(f"  would create default config: {p}")
@@ -566,6 +566,7 @@ def cmd_init(ns: argparse.Namespace) -> int:
         created = True
     print("tlm directories ready:", flush=True)
     print(f"  config:  {p.parent}", flush=True)
+    print(f"  prompts: {prompts_dir()}", flush=True)
     print(f"  data:    {data_dir()}", flush=True)
     print(f"  state:   {state_dir()}", flush=True)
     if created:
@@ -577,6 +578,10 @@ def cmd_init(ns: argparse.Namespace) -> int:
     note = init_gui_note()
     if note:
         print(note, flush=True)
+
+    from tlm.prompts import init_prompts
+
+    init_prompts()
 
     no_wiz = bool(getattr(ns, "no_wizard", False))
     want_wiz = bool(getattr(ns, "wizard", False))

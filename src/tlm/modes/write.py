@@ -13,13 +13,9 @@ from tlm.providers.base import LLMProvider
 from tlm.safety import interactive_gate_string
 
 
-_WRITE_SYSTEM = """You are tlm's code writer for Linux.
-Reply with ONLY a JSON object (no markdown) of this shape:
-{"files":[{"path":"relative/path.ext","contents":"file body","executable":false}],"notes":"short summary"}
-Rules:
-- paths must be relative (no leading /, no .. segments).
-- keep file set minimal; UTF-8 text only.
-"""
+from tlm.prompts import load_prompt
+
+_WRITE_SYSTEM = load_prompt("write", "system")
 
 
 @dataclass

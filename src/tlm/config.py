@@ -60,3 +60,11 @@ def base_url_env(provider: str) -> str | None:
 def default_model_env() -> str | None:
     v = os.environ.get("TLM_MODEL")
     return v.strip() if v else None
+
+
+def prompts_dir() -> Path:
+    from tlm.settings import config_dir
+
+    d = config_dir() / "prompts"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
