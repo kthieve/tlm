@@ -9,14 +9,14 @@ Design and implement a non-destructive hook system that allows `tlm` to be exten
 - Identify core hook points (e.g., pre-command, post-command, custom provider registration).
 
 ## Phase B: Build
-- [ ] Create `src/tlm/plugins/base.py` for abstract base classes.
-- [ ] Create `src/tlm/plugins/manager.py` for discovery and lifecycle.
-- [ ] Add `extension_enabled = true` to `settings.py`.
+- [x] Create `src/tlm/plugins/base.py` for abstract base classes.
+- [x] Create `src/tlm/plugins/manager.py` for discovery and lifecycle.
+- [x] Add `extension_enabled = true` to `settings.py`.
 
 ## Phase C: Test
-- [ ] Unit tests for plugin discovery.
-- [ ] Mock a simple "Hello World" extension and verify hook execution.
+- [x] Unit tests for plugin discovery.
+- [x] Mock a simple "Hello World" extension and verify hook execution.
 
 ## Phase D: Document
-- [ ] Update `CODE_INDEX.md` with the new `plugins` package.
-- [ ] Draft `docs/abilities.md` for developers.
+- [x] Update `CODE_INDEX.md` with the new `plugins` package.
+- [x] Draft `docs/abilities.md` for developers.

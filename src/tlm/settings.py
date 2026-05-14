@@ -53,6 +53,7 @@ class UserSettings:
     memory_ready_budget_chars: int = 800
     memory_auto_harvest_threshold_messages: int = 30
     memory_harvest_on_switch: bool = True
+    extension_enabled: bool = True
     # Max assistant↔tool feedback iterations per `tlm ask` (each web batch + model reply can consume one).
     ask_max_tool_rounds: int = 12
     # Lightpanda-backed ask web tools (see tlm.web.lightpanda); off until user installs binary.
@@ -105,6 +106,7 @@ def save_settings(s: UserSettings) -> None:
         f"memory_auto_harvest_threshold_messages = {int(s.memory_auto_harvest_threshold_messages)}"
     )
     lines.append(f"memory_harvest_on_switch = {str(bool(s.memory_harvest_on_switch)).lower()}")
+    lines.append(f"extension_enabled = {str(bool(s.extension_enabled)).lower()}")
     lines.append(f"ask_max_tool_rounds = {_clamp_ask_max_tool_rounds(s.ask_max_tool_rounds)}")
     lines.append(f"web_enabled = {str(bool(s.web_enabled)).lower()}")
     if s.lightpanda_path is not None:
@@ -186,6 +188,7 @@ def load_settings() -> UserSettings:
             data.get("memory_auto_harvest_threshold_messages", 30)
         ),
         memory_harvest_on_switch=_bool("memory_harvest_on_switch", True),
+        extension_enabled=_bool("extension_enabled", True),
         ask_max_tool_rounds=_clamp_ask_max_tool_rounds(data.get("ask_max_tool_rounds", 12)),
         web_enabled=_bool("web_enabled", False),
         lightpanda_path=data.get("lightpanda_path")

@@ -29,6 +29,12 @@ def sessions_dir() -> Path:
     return d
 
 
+def abilities_dir() -> Path:
+    d = data_dir() / "abilities"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def xdg_state_home() -> Path:
     base = os.environ.get("XDG_STATE_HOME")
     if base:

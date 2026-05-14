@@ -11,6 +11,8 @@
 | `src/tlm/config.py` | XDG paths, env keys, base URL / model env helpers |
 | `src/tlm/settings.py` | `config.toml` load/save (`$XDG_CONFIG_HOME/tlm/`) |
 | `src/tlm/_version.py` | `importlib.metadata` version lookup |
+| `src/tlm/plugins/base.py` | Plugin metadata and `Extension` abstract base class |
+| `src/tlm/plugins/manager.py` | `ExtensionManager` discovery and hook dispatch |
 | `src/tlm/session.py` | Sessions JSON, keyword, resolve, trim, last-session pointer |
 | `src/tlm/memory.py` | Ready + long-term memory, safety filters, search |
 | `src/tlm/harvest.py` | Session → memory extraction, auto-harvest helper |
