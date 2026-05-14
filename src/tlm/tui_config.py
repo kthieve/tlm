@@ -152,6 +152,37 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
             print("Unknown choice.", file=sys.stderr)
 
 
+def _abilities_menu(s: UserSettings) -> bool:
+    """Abilities / plugins submenu. Returns True if settings were changed."""
+    from tlm.plugins.manager import ExtensionManager
+
+    dirty = False
+    manager = ExtensionManager()
+    while True:
+        abilities = manager.discover()
+        print("\n--- Abilities (Plugins) ---", flush=True)
+        print(f"  extension_enabled: {s.extension_enabled}", flush=True)
+        print("\nDiscovered:", flush=True)
+        if not abilities:
+            print("  (none found in abilities/ directory)", flush=True)
+        for a in abilities:
+            print(f"  - {a.name} v{a.version}: {a.description or '(no desc)'}", flush=True)
+
+        print("\n  1) Toggle extension_enabled", flush=True)
+        print("  0) Back to main menu", flush=True)
+        try:
+            sub = input("\nChoice [0-1]: ").strip().lower()
+        except EOFError:
+            return dirty
+        if sub == "0":
+            return dirty
+        if sub == "1":
+            s.extension_enabled = not s.extension_enabled
+            dirty = True
+        else:
+            print("Unknown choice.", file=sys.stderr)
+
+
 def run_config_tui() -> int:
     s = load_settings()
     dirty = False
@@ -178,16 +209,15 @@ def run_config_tui() -> int:
             flush=True,
         )
         print(f"     harvest on switch   [{s.memory_harvest_on_switch}]", flush=True)
-        print(
-            f"  u) check GitHub updates [{s.check_for_updates}]  repo [{s.github_repo or '(auto)'}]",
-            flush=True,
-        )
+        print(f"  u) check GitHub updates [{s.check_for_updates}]  repo [{s.github_repo or '(auto)'}]",
+              flush=True)
+        print("  a) Abilities (plugins) status and discovery", flush=True)
         print("  v) Version / tlm update status (queries GitHub if possible)", flush=True)
         print("  8) Save and exit", flush=True)
         print("  9) Exit without saving", flush=True)
         print("  g) Open GUI (`tlm config gui`)", flush=True)
         try:
-            choice = input("\nChoice [1-9,m,w,u,g,v]: ").strip().lower()
+            choice = input("\nChoice [1-9,m,w,u,g,v,a]: ").strip().lower()
         except EOFError:
             print("\n(use 8 to save, 9 to quit)", file=sys.stderr)
             return 1
@@ -311,6 +341,8 @@ def run_config_tui() -> int:
             elif v4 in ("n", "no"):
                 s.memory_harvest_on_switch = False
                 dirty = True
+        elif choice == "a":
+            dirty = dirty or _abilities_menu(s)
         elif choice == "v":
             print("\n--- tlm version / update status ---", flush=True)
             print(format_version_update_status(s, query_github=True), flush=True)

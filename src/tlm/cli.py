@@ -77,6 +77,8 @@ KNOWN_SUBCOMMANDS = frozenset(
         "stop",
         "versionlog",
         "wizard",
+        "abilities",
+        "ability",
     }
 )
 
@@ -282,6 +284,39 @@ def cmd_providers() -> int:
     for pid, has_key, model in describe_providers():
         key = "yes" if has_key else "no"
         print(f"{pid}\tkey={key}\tmodel={model}")
+    return 0
+
+
+def cmd_abilities() -> int:
+    from tlm.plugins.manager import ExtensionManager
+
+    manager = ExtensionManager()
+    abilities = manager.discover()
+    if not abilities:
+        print("No abilities discovered.")
+        return 0
+
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        Console = None
+        Table = None
+
+    if Console is not None and Table is not None:
+        console = Console()
+        table = Table(title="Discovered Abilities")
+        table.add_column("Name", style="cyan")
+        table.add_column("Version", style="magenta")
+        table.add_column("Description")
+        table.add_column("Runtime", style="dim")
+        for a in abilities:
+            table.add_row(a.name, a.version, a.description or "", a.runtime)
+        console.print(table)
+    else:
+        print("Discovered Abilities:")
+        for a in abilities:
+            print(f"  {a.name} (v{a.version}) - {a.description}")
     return 0
 
 
@@ -1252,6 +1287,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("wizard", help="Re-run the interactive setup wizard.").set_defaults(
         _handler=lambda _: cmd_wizard()
     )
+
+    p_abs = sub.add_parser(
+        "abilities", help="List discovered abilities (plugins).", aliases=["ability"]
+    )
+    p_abs.set_defaults(_handler=lambda _: cmd_abilities())
 
     return p
 

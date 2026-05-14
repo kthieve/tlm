@@ -456,6 +456,62 @@ def run_gui() -> None:
 
     nb.bind("<<NotebookTabChanged>>", on_notebook_tab_change)
 
+    # --- Abilities ---
+    tab_abilities = ttk.Frame(nb, padding=12)
+    nb.add(tab_abilities, text="Abilities")
+    tab_abilities.columnconfigure(0, weight=1)
+    tab_abilities.rowconfigure(1, weight=1)
+
+    as_st = load_settings()
+    ext_en_var = tk.BooleanVar(value=bool(as_st.extension_enabled))
+
+    lf_ext = ttk.LabelFrame(tab_abilities, text="Global Plugin Settings", padding=(12, 10))
+    lf_ext.grid(row=0, column=0, sticky="ew")
+    ttk.Checkbutton(
+        lf_ext,
+        text="extension_enabled (discover and load abilities from XDG_DATA_HOME/tlm/abilities/)",
+        variable=ext_en_var,
+    ).grid(row=0, column=0, sticky="w")
+
+    def save_ext_settings() -> None:
+        s = load_settings()
+        s.extension_enabled = bool(ext_en_var.get())
+        save_settings(s)
+        messagebox.showinfo("tlm", "Saved extension settings.")
+
+    ttk.Button(lf_ext, text="Save", command=save_ext_settings).grid(row=0, column=1, sticky="e")
+    lf_ext.columnconfigure(0, weight=1)
+
+    lf_discov = ttk.LabelFrame(tab_abilities, text="Discovered Abilities", padding=(12, 10))
+    lf_discov.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+    lf_discov.columnconfigure(0, weight=1)
+    lf_discov.rowconfigure(0, weight=1)
+
+    ab_cols = ("name", "version", "description", "runtime")
+    ab_tree = ttk.Treeview(lf_discov, columns=ab_cols, show="headings", height=10)
+    for c, w in zip(ab_cols, (150, 80, 300, 80), strict=False):
+        ab_tree.heading(c, text=c.title())
+        ab_tree.column(c, width=w, stretch=True)
+    ab_tree.grid(row=0, column=0, sticky="nsew")
+    absb = ttk.Scrollbar(lf_discov, orient=tk.VERTICAL, command=ab_tree.yview)
+    absb.grid(row=0, column=1, sticky="ns")
+    ab_tree.configure(yscrollcommand=absb.set)
+
+    def refresh_abilities() -> None:
+        from tlm.plugins.manager import ExtensionManager
+
+        ab_tree.delete(*ab_tree.get_children())
+        manager = ExtensionManager()
+        for a in manager.discover():
+            ab_tree.insert(
+                "", tk.END, values=(a.name, a.version, a.description or "", a.runtime)
+            )
+
+    ttk.Button(tab_abilities, text="Refresh Discovery", command=refresh_abilities).grid(
+        row=2, column=0, sticky="e", pady=(8, 0)
+    )
+    refresh_abilities()
+
     # --- About (version / tlm GitHub update status) ---
     tab_about = ttk.Frame(nb, padding=12)
     nb.add(tab_about, text="About")
