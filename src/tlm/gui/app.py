@@ -15,7 +15,6 @@ import os
 from tlm import __version__
 from tlm.harvest import apply_harvest_items, extract_harvest_items
 from tlm.memory import (
-    STORAGE_RULES_TEXT,
     add_longterm,
     delete_longterm,
     iter_longterm,
@@ -31,6 +30,7 @@ from tlm.safety.permissions import (
     save_permissions_file,
 )
 from tlm.safety.profiles import SafetyProfile, normalize_profile
+from tlm.safety.elevation import is_elevated, elevate_me
 from tlm.safety.root_guard import is_euid_root
 from tlm.session import (
     delete_session,
@@ -203,9 +203,9 @@ def run_gui() -> None:
     ttk.Button(bf, text="Test connection", command=test_keys).pack(side=tk.RIGHT)
     load_key_for_provider()
 
-    # --- Web / Lightpanda ---
+    # --- Web Browser ---
     tab_web = ttk.Frame(nb, padding=12)
-    nb.add(tab_web, text="Web / Lightpanda")
+    nb.add(tab_web, text="Web Browser")
     tab_web.columnconfigure(0, weight=1)
     tab_web.rowconfigure(1, weight=1)
 
@@ -215,18 +215,31 @@ def run_gui() -> None:
     web_ua_var = tk.StringVar(value=ws.web_user_agent or "")
     web_ua_suffix_var = tk.StringVar(value=ws.web_user_agent_suffix or "")
     web_auto_check_var = tk.BooleanVar(value=bool(ws.web_check_lightpanda_updates))
+    web_backend_var = tk.StringVar(value=ws.web_backend or "auto")
 
     lf_web = ttk.LabelFrame(tab_web, text="Ask mode — `tlm-web` / `tlm web`", padding=(12, 10))
     lf_web.grid(row=0, column=0, sticky="ew")
     lf_web.columnconfigure(1, weight=1)
     ttk.Checkbutton(
         lf_web,
-        text="web_enabled (allow Lightpanda fetches in ask mode)",
+        text="web_enabled (allow browser fetches in ask mode)",
         variable=web_en_var,
     ).grid(row=0, column=0, columnspan=3, sticky="w")
-    ttk.Label(lf_web, text="lightpanda_path").grid(row=1, column=0, sticky="w", pady=(10, 0))
+
+    ttk.Label(lf_web, text="web_backend").grid(row=1, column=0, sticky="w", pady=(10, 0))
+    backend_box = ttk.Combobox(
+        lf_web,
+        textvariable=web_backend_var,
+        values=["auto", "lightpanda", "playwright"],
+        state="readonly",
+        width=12,
+    )
+    backend_box.grid(row=1, column=1, sticky="w", pady=(10, 0))
+    ttk.Label(lf_web, text="(Select fetch engine)").grid(row=1, column=2, sticky="w", padx=(8,0), pady=(10,0))
+
+    ttk.Label(lf_web, text="lightpanda_path").grid(row=2, column=0, sticky="w", pady=(10, 0))
     ttk.Entry(lf_web, textvariable=lp_path_var, width=52).grid(
-        row=1, column=1, sticky="we", pady=(10, 0)
+        row=2, column=1, sticky="we", pady=(10, 0)
     )
 
     def browse_lightpanda() -> None:
@@ -235,25 +248,29 @@ def run_gui() -> None:
             lp_path_var.set(p)
 
     ttk.Button(lf_web, text="Browse…", command=browse_lightpanda).grid(
-        row=1, column=2, sticky="w", padx=(8, 0), pady=(10, 0)
+        row=2, column=2, sticky="w", padx=(8, 0), pady=(10, 0)
     )
     ttk.Checkbutton(
         lf_web,
-        text="Auto-check GitHub release when opening this tab",
+        text="Auto-check Lightpanda updates when opening this tab",
         variable=web_auto_check_var,
-    ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
-    ttk.Label(lf_web, text="web_user_agent").grid(row=3, column=0, sticky="w", pady=(10, 0))
+    ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(10, 0))
+    ttk.Label(lf_web, text="web_user_agent").grid(row=4, column=0, sticky="w", pady=(10, 0))
     ttk.Entry(lf_web, textvariable=web_ua_var, width=52).grid(
-        row=3, column=1, sticky="we", pady=(10, 0)
+        row=4, column=1, sticky="we", pady=(10, 0)
     )
-    ttk.Label(lf_web, text="web_user_agent_suffix").grid(row=4, column=0, sticky="w", pady=(8, 0))
+    ttk.Label(lf_web, text="web_user_agent_suffix").grid(row=5, column=0, sticky="w", pady=(8, 0))
     ttk.Entry(lf_web, textvariable=web_ua_suffix_var, width=52).grid(
-        row=4, column=1, sticky="we", pady=(8, 0)
+        row=5, column=1, sticky="we", pady=(8, 0)
     )
     ttk.Label(
         lf_web,
         text="Compatibility passthrough only. Does not bypass anti-bot checks.",
-    ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+    ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+    from tlm.config import browsers_dir
+    ttk.Label(lf_web, text="Playwright Path:").grid(row=7, column=0, sticky="w", pady=(8, 0))
+    ttk.Label(lf_web, text=str(browsers_dir()), foreground="#555").grid(row=7, column=1, columnspan=2, sticky="w", pady=(8, 0))
 
     lf_status = ttk.LabelFrame(tab_web, text="Status & updates (GitHub)", padding=(12, 10))
     lf_status.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
@@ -267,6 +284,7 @@ def run_gui() -> None:
     def save_web_settings() -> None:
         s = load_settings()
         s.web_enabled = bool(web_en_var.get())
+        s.web_backend = web_backend_var.get()
         lp_p = lp_path_var.get().strip()
         s.lightpanda_path = lp_p if lp_p else None
         ua = web_ua_var.get().strip()
@@ -278,31 +296,76 @@ def run_gui() -> None:
         messagebox.showinfo("tlm", "Saved web settings to config.toml.")
 
     def refresh_lp_status() -> None:
+        from tlm.web.browser_install import describe_web_browser_status
+
         s = load_settings()
         s.web_enabled = bool(web_en_var.get())
+        s.web_backend = web_backend_var.get()
         s.lightpanda_path = lp_path_var.get().strip() or None
-        lines = [describe_local_install(s), ""]
-        want = preferred_asset_basename()
-        if not want:
-            lines.append(
-                f"This OS/arch has no mapped GitHub asset (got {want or 'unknown'}). Open releases to pick a build."
-            )
-        else:
-            ok, data = fetch_latest_release(timeout=15.0)
-            if ok and isinstance(data, dict):
-                lines.append(compare_status(s, data))
-            else:
-                lines.append(f"Could not reach GitHub: {data}")
+        
+        status_txt = describe_web_browser_status(s)
         lp_status.delete("1.0", tk.END)
-        lp_status.insert(tk.END, "\n".join(lines))
+        lp_status.insert(tk.END, status_txt)
 
-    def download_lightpanda_gui() -> None:
-        if not messagebox.askyesno(
-            "tlm",
-            "Download the latest Lightpanda binary for this OS from GitHub into your tlm data directory "
-            "and set lightpanda_path? (~/.local/share/tlm/bin/lightpanda)",
-        ):
+    def download_browser_gui() -> None:
+        from tlm.web.browser_install import install_web_browser
+        from tlm.web.backend import resolve_web_backend
+        import sys
+
+        s = load_settings()
+        
+        # Determine available backends
+        available = ["playwright"]
+        if sys.platform != "win32":
+            available.append("lightpanda")
+        
+        # If only one is available, we can skip the selection, but user asked for a page/option
+        # so we show a dialog regardless or at least a clear choice.
+        
+        selected_backend = None
+        
+        class SelectionDialog(tk.Toplevel):
+            def __init__(self, parent):
+                super().__init__(parent)
+                self.title("Install Web Browser")
+                self.transient(parent)
+                self.grab_set()
+                self.resizable(False, False)
+                
+                self.result = None
+                
+                fr = ttk.Frame(self, padding=20)
+                fr.pack(fill=tk.BOTH, expand=True)
+                
+                ttk.Label(fr, text="Select the web browser engine to install:", font=("TkDefaultFont", 10, "bold")).pack(pady=(0, 10))
+                
+                self.var = tk.StringVar(value=available[0])
+                
+                for b in available:
+                    desc = " (Fast, Go-based)" if b == "lightpanda" else " (Chromium via Playwright)"
+                    ttk.Radiobutton(fr, text=b.title() + desc, variable=self.var, value=b).pack(anchor="w", pady=2)
+                
+                ttk.Label(fr, text="\nLightpanda is recommended for most Linux/Mac setups.\nPlaywright/Chromium is required for Windows.", 
+                          font=("TkDefaultFont", 8), foreground="#555").pack(pady=(10, 0))
+                
+                btn_fr = ttk.Frame(fr)
+                btn_fr.pack(fill=tk.X, pady=(20, 0))
+                
+                ttk.Button(btn_fr, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, padx=(8, 0))
+                ttk.Button(btn_fr, text="Install", command=self.on_install, style="Accent.TButton").pack(side=tk.RIGHT)
+                
+            def on_install(self):
+                self.result = self.var.get()
+                self.destroy()
+        
+        dial = SelectionDialog(root)
+        root.wait_window(dial)
+        selected_backend = dial.result
+        
+        if not selected_backend:
             return
+            
+        backend = selected_backend
 
         def _fmt_bytes(n: int) -> str:
             if n < 1024:
@@ -312,14 +375,14 @@ def run_gui() -> None:
             return f"{n / (1024 * 1024):.1f} MiB"
 
         dlg = tk.Toplevel(root)
-        dlg.title("Downloading Lightpanda")
+        dlg.title(f"Installing {backend.title()}")
         dlg.transient(root)
         dlg.resizable(False, False)
         dlg.grab_set()
         cancel_ev = threading.Event()
         fr = ttk.Frame(dlg, padding=20)
         fr.pack(fill=tk.BOTH, expand=True)
-        lbl_prog = ttk.Label(fr, text="Starting…", justify=tk.CENTER)
+        lbl_prog = ttk.Label(fr, text="Initializing…", justify=tk.CENTER)
         lbl_prog.pack(pady=(0, 8))
         pb = ttk.Progressbar(fr, mode="indeterminate", length=320)
         pb.pack(pady=(0, 8))
@@ -354,11 +417,13 @@ def run_gui() -> None:
                 s.web_enabled = bool(web_en_var.get())
                 s.lightpanda_path = lp_path_var.get().strip() or None
                 outcome.append(
-                    install_latest_to_data_dir(
+                    install_web_browser(
                         s,
+                        backend=backend,
                         timeout=600.0,
                         cancel_event=cancel_ev,
                         progress=schedule_progress,
+                        text_progress=lambda t: root.after(0, lambda: lbl_prog.configure(text=t))
                     )
                 )
             except BaseException as e:  # noqa: BLE001 — surface any failure in GUI
@@ -389,23 +454,27 @@ def run_gui() -> None:
                 messagebox.showerror("tlm", f"Download failed: {raw}")
                 return
             ok, msg, dest = raw
-            if ok and dest:
-                lp_path_var.set(str(dest))
-                save_web_settings()
+            if ok:
+                if backend == "lightpanda" and dest:
+                    lp_path_var.set(str(dest))
+                    save_web_settings()
+                
                 messagebox.showinfo("tlm", msg)
                 refresh_lp_status()
-                pdir = dest.parent
-                if messagebox.askyesno(
-                    "tlm",
-                    f"Add {pdir} to your PATH in ~/.bashrc or ~/.zshrc (based on $SHELL)?\n"
-                    "New terminals will find `lightpanda` without `lightpanda_path` in config.",
-                ):
-                    ok_p, pmsg = try_add_tlm_data_bin_to_path_rc()
-                    (messagebox.showinfo if ok_p else messagebox.showerror)("tlm", pmsg)
+                
+                if backend == "lightpanda" and dest:
+                    pdir = dest.parent
+                    if messagebox.askyesno(
+                        "tlm",
+                        f"Add {pdir} to your PATH in ~/.bashrc or ~/.zshrc (based on $SHELL)?\n"
+                        "New terminals will find `lightpanda` without `lightpanda_path` in config.",
+                    ):
+                        ok_p, pmsg = try_add_tlm_data_bin_to_path_rc()
+                        (messagebox.showinfo if ok_p else messagebox.showerror)("tlm", pmsg)
             elif "cancelled" in msg.lower():
                 messagebox.showwarning("tlm", msg)
             else:
-                messagebox.showerror("tlm", msg)
+                messagebox.showerror("tlm", f"Installation failed: {msg}")
 
         def poll() -> None:
             if outcome:
@@ -422,7 +491,7 @@ def run_gui() -> None:
         wf, text="Save web settings", command=save_web_settings, style="Accent.TButton"
     ).pack(side=tk.LEFT, padx=(0, 8))
     ttk.Button(wf, text="Refresh status", command=refresh_lp_status).pack(side=tk.LEFT, padx=(0, 8))
-    ttk.Button(wf, text="Download / update binary", command=download_lightpanda_gui).pack(
+    ttk.Button(wf, text="Install Browser", command=download_browser_gui).pack(
         side=tk.LEFT, padx=(0, 8)
     )
     ttk.Button(wf, text="Open releases page", command=lambda: webbrowser.open(RELEASES_PAGE)).pack(
@@ -438,7 +507,7 @@ def run_gui() -> None:
     )
     ttk.Label(
         wf,
-        text="(After install: so `lightpanda` is on PATH; uses ~/.bashrc or ~/.zshrc.)",
+        text="(After Lightpanda install: so binary is on PATH; uses ~/.bashrc or ~/.zshrc.)",
         font=("TkDefaultFont", 8),
         foreground="#555",
     ).pack(side=tk.LEFT, padx=(0, 0))
@@ -449,7 +518,7 @@ def run_gui() -> None:
             label = nb.tab(tab_id, "text")
         except tk.TclError:
             return
-        if label == "Web / Lightpanda" and web_auto_check_var.get():
+        if label == "Web Browser" and web_auto_check_var.get():
             root.after(100, refresh_lp_status)
         if label == "About":
             root.after(50, lambda: refresh_about(online=False))
@@ -525,11 +594,50 @@ def run_gui() -> None:
     tab_about.rowconfigure(1, weight=1)
 
     def refresh_about(*, online: bool = False) -> None:
+        from tlm.config import find_tlm_bin_dir
+
         txt = format_version_update_status(load_settings(), query_github=online)
+
+        # Add bin path info for PATH setup debugging
+        bin_dir = find_tlm_bin_dir()
+        bin_txt = f"\nDetected Bin Path: {bin_dir if bin_dir else 'Unknown'}"
+
+        # Elevation status
+        elevated = is_elevated()
+        admin_txt = "\nPrivileges: " + ("Elevated / Administrator" if elevated else "Standard User")
+
         about_body.configure(state=tk.NORMAL)
         about_body.delete("1.0", tk.END)
-        about_body.insert(tk.END, txt)
+        about_body.insert(tk.END, txt + bin_txt + admin_txt)
         about_body.configure(state=tk.DISABLED)
+
+    def on_add_to_path() -> None:
+        from tlm.config import find_tlm_bin_dir
+        from tlm.safety.path import add_dir_to_path
+
+        bin_dir = find_tlm_bin_dir()
+        if not bin_dir:
+            messagebox.showerror(
+                "tlm",
+                "Could not automatically locate tlm binary directory.\nPlease add it to PATH manually.",
+            )
+            return
+
+        ok, msg = add_dir_to_path(bin_dir)
+        if ok:
+            messagebox.showinfo("tlm", msg)
+        else:
+            messagebox.showerror("tlm", msg)
+
+    def on_elevate() -> None:
+        if is_elevated():
+            messagebox.showinfo("tlm", "Already running with elevated privileges.")
+            return
+        if messagebox.askyesno("tlm", "Restart tlm with administrative/root privileges?"):
+            try:
+                elevate_me()
+            except Exception as e:
+                messagebox.showerror("tlm", f"Elevation failed: {e}")
 
     ab_fr = ttk.Frame(tab_about)
     ab_fr.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -538,6 +646,18 @@ def run_gui() -> None:
         text="Refresh (query GitHub for latest release tag)",
         command=lambda: refresh_about(online=True),
     ).pack(side=tk.LEFT)
+    ttk.Button(
+        ab_fr,
+        text="Add to PATH (Auto-detect OS)",
+        command=on_add_to_path,
+    ).pack(side=tk.LEFT, padx=(8, 0))
+
+    if not is_elevated():
+        ttk.Button(
+            ab_fr,
+            text="Run as Admin / Root",
+            command=on_elevate,
+        ).pack(side=tk.LEFT, padx=(8, 0))
     refresh_about(online=False)
 
     # --- Sessions ---

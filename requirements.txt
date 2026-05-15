@@ -4,4 +4,4 @@ python-dotenv>=1.0
 rich>=13.7
 rich-argparse>=1.0
 
-# Version aligned with [project].version (0.4.0.dev1 dev train; betas use 0.3.0bN).
+# Version aligned with [project].version (0.4.2.dev6 dev train; betas use 0.3.0bN).

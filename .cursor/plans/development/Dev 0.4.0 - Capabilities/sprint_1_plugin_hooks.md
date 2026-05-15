@@ -20,3 +20,8 @@ Design and implement a non-destructive hook system that allows `tlm` to be exten
 ## Phase D: Document
 - [x] Update `CODE_INDEX.md` with the new `plugins` package.
 - [x] Draft `docs/abilities.md` for developers.
+
+## Phase E: Integration
+- [x] CLI integration (`tlm abilities`).
+- [x] TUI integration (`tlm config` -> Abilities).
+- [x] GUI integration (`tlm gui` -> Abilities tab + Add to PATH button).

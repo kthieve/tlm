@@ -323,7 +323,7 @@ class OnboardingWizard:
         )
 
         web_var = tk.BooleanVar(value=self.settings.web_enabled)
-        ttk.Checkbutton(main, text="Enable Web Tools (Lightpanda)", variable=web_var).pack(
+        ttk.Checkbutton(main, text="Enable Web Tools (Browser)", variable=web_var).pack(
             anchor="w", pady=5
         )
 
@@ -376,7 +376,11 @@ class OnboardingWizard:
             tk.Label(f, text=f"$ {cmd}", font=self.mono_font, bg="#f1f5f9").pack(side=tk.LEFT)
 
     def _create_path_page(self):
-        # Only show if bin_dir not on PATH
+        import platform
+        from tlm.config import find_tlm_bin_dir
+
+        is_windows = platform.system() == "Windows"
+
         tk.Label(
             self.content_frame,
             text="📎 Final Step — PATH Setup",
@@ -391,15 +395,8 @@ class OnboardingWizard:
             wraplength=600,
         ).pack(pady=10)
 
-        bin_dir = ""
-        # Try to infer bin_dir from sys.executable
-        try:
-            exe_p = Path(sys.executable).resolve()
-            if "tlm-venv" in str(exe_p) or ".venv" in str(exe_p):
-                # Likely ~/.local/share/tlm-venv/bin/python -> ~/.local/bin/tlm
-                bin_dir = str(Path.home() / ".local" / "bin")
-        except Exception:
-            pass
+        bin_dir_path = find_tlm_bin_dir()
+        bin_dir = str(bin_dir_path) if bin_dir_path else ""
 
         tk.Label(
             self.content_frame,
@@ -408,37 +405,62 @@ class OnboardingWizard:
             bg=_BG_PAGE,
         ).pack()
 
-        tk.Label(
-            self.content_frame,
-            text="Recommended: Add to ~/.bashrc or ~/.zshrc",
-            font=self.title_font,
-            bg=_BG_PAGE,
-        ).pack(pady=(20, 10))
+        if is_windows:
+            tk.Label(
+                self.content_frame,
+                text="Recommended: Add to User PATH",
+                font=self.title_font,
+                bg=_BG_PAGE,
+            ).pack(pady=(20, 10))
 
-        def add_to_rc(shell):
-            rc = Path.home() / f".{shell}rc"
-            if not rc.is_file():
-                messagebox.showerror("Error", f"{rc} not found.")
-                return
-            line = f'\nexport PATH="{bin_dir}:$PATH"\n'
-            try:
-                with open(rc, "a") as f:
-                    f.write(line)
-                messagebox.showinfo(
-                    "Success", f"Added to {rc}. Please restart your terminal or run 'source {rc}'."
-                )
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to write to {rc}: {e}")
+            def add_to_path_win():
+                if not bin_dir_path:
+                    messagebox.showerror("Error", "Could not detect tlm bin directory.")
+                    return
+                
+                from install import _add_to_user_path_windows
+                try:
+                    added = _add_to_user_path_windows(bin_dir_path)
+                    if added:
+                        messagebox.showinfo("Success", "Added to your user PATH. Please restart your terminal.")
+                    else:
+                        messagebox.showinfo("tlm", "Path is already in your environment.")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to update PATH: {e}")
 
-        btn_fr = tk.Frame(self.content_frame, bg=_BG_PAGE)
-        btn_fr.pack()
+            ttk.Button(self.content_frame, text="Add to User PATH", command=add_to_path_win).pack(pady=10)
+        else:
+            tk.Label(
+                self.content_frame,
+                text="Recommended: Add to ~/.bashrc or ~/.zshrc",
+                font=self.title_font,
+                bg=_BG_PAGE,
+            ).pack(pady=(20, 10))
 
-        ttk.Button(btn_fr, text="Add to ~/.bashrc", command=lambda: add_to_rc("bash")).pack(
-            side=tk.LEFT, padx=10
-        )
-        ttk.Button(btn_fr, text="Add to ~/.zshrc", command=lambda: add_to_rc("zsh")).pack(
-            side=tk.LEFT, padx=10
-        )
+            def add_to_rc(shell):
+                rc = Path.home() / f".{shell}rc"
+                if not rc.is_file():
+                    messagebox.showerror("Error", f"{rc} not found.")
+                    return
+                line = f'\nexport PATH="{bin_dir}:$PATH"\n'
+                try:
+                    with open(rc, "a") as f:
+                        f.write(line)
+                    messagebox.showinfo(
+                        "Success", f"Added to {rc}. Please restart your terminal or run 'source {rc}'."
+                    )
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to write to {rc}: {e}")
+
+            btn_fr = tk.Frame(self.content_frame, bg=_BG_PAGE)
+            btn_fr.pack()
+
+            ttk.Button(btn_fr, text="Add to ~/.bashrc", command=lambda: add_to_rc("bash")).pack(
+                side=tk.LEFT, padx=10
+            )
+            ttk.Button(btn_fr, text="Add to ~/.zshrc", command=lambda: add_to_rc("zsh")).pack(
+                side=tk.LEFT, padx=10
+            )
 
 
 def run_onboarding():

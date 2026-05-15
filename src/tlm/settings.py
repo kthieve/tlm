@@ -14,6 +14,12 @@ def config_dir() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME")
     if base:
         p = Path(base).expanduser() / "tlm"
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            p = Path(appdata) / "tlm"
+        else:
+            p = Path.home() / ".config" / "tlm"
     else:
         p = Path.home() / ".config" / "tlm"
     p.mkdir(parents=True, exist_ok=True)
@@ -76,6 +82,8 @@ class UserSettings:
     web_concurrency: int = 3
     # If true, tlm never prompts for web in this process run — all tlm-web batches run immediately.
     web_auto_approve_run: bool = False
+    # web backend: "auto", "lightpanda", "playwright"
+    web_backend: str = "auto"
     # When true, Web settings tab (GUI) may query GitHub for Lightpanda release info on open.
     web_check_lightpanda_updates: bool = False
     # GitHub release hint (stderr); disable with TLM_NO_UPDATE_CHECK=1.
@@ -126,6 +134,7 @@ def save_settings(s: UserSettings) -> None:
         lines.append(f"web_user_agent_suffix = {_toml_escape_str(s.web_user_agent_suffix)}")
     lines.append(f"web_concurrency = {_clamp_web_concurrency(s.web_concurrency)}")
     lines.append(f"web_auto_approve_run = {str(bool(s.web_auto_approve_run)).lower()}")
+    lines.append(f"web_backend = {_toml_escape_str(s.web_backend)}")
     lines.append(
         f"web_check_lightpanda_updates = {str(bool(s.web_check_lightpanda_updates)).lower()}"
     )
@@ -211,6 +220,7 @@ def load_settings() -> UserSettings:
         ),
         web_concurrency=_clamp_web_concurrency(data.get("web_concurrency", 3)),
         web_auto_approve_run=_bool("web_auto_approve_run", False),
+        web_backend=str(data.get("web_backend", "auto")),
         web_check_lightpanda_updates=_bool("web_check_lightpanda_updates", False),
         check_for_updates=_bool("check_for_updates", False),
         github_repo=data.get("github_repo") if isinstance(data.get("github_repo"), str) else None,

@@ -87,6 +87,7 @@ class InstallerWizard:
         self._build_layout()
 
         self.existing_bin = find_existing_install()
+        self.existing_choice = tk.IntVar(value=1) # 1: Update, 2: Reinstall (custom), 3: Reinstall (portable)
         self.is_update = tk.BooleanVar(value=bool(self.existing_bin))
 
         self.steps = []
@@ -172,12 +173,25 @@ class InstallerWizard:
         self.step_label.configure(text=f"Step {index + 1} of {len(self.steps)}")
 
     def next_step(self):
-        # If we are on existing install page and chose update, skip to summary
+        # If we are on existing install page
         if self.existing_bin and self.steps[self.current_step] == self._create_existing_install_page:
-            if self.is_update.get():
-                # Set up paths for update and skip to summary
+            choice = self.existing_choice.get()
+            if choice == 1: # Update
+                # Try to infer mode and paths
+                is_win = platform.system() == "Windows"
+                launcher = self.existing_bin / ("tlm.bat" if is_win else "tlm")
+                has_data = (self.existing_bin / "data").exists()
+                is_p = False
+                if launcher.exists():
+                    try:
+                        content = launcher.read_text(encoding="utf-8", errors="replace")
+                        if "XDG_CONFIG_HOME" in content:
+                            is_p = True
+                    except Exception:
+                        pass
+
                 if (self.existing_bin / "venv").exists():
-                    self.install_mode.set(1)
+                    self.install_mode.set(1 if (is_p or has_data) else 2)
                     self.dest_path.set(str(self.existing_bin))
                 else:
                     self.install_mode.set(3)
@@ -189,6 +203,21 @@ class InstallerWizard:
                 summary_idx = self.steps.index(self._create_summary_page)
                 self.show_step(summary_idx)
                 return
+            elif choice == 3: # Reinstall as Portable
+                self.install_mode.set(1)
+                if platform.system() == "Windows":
+                    self.dest_path.set("C:\\tlm")
+                else:
+                    self.dest_path.set(str(Path.cwd() / "tlm-install"))
+                
+                # Skip to summary step (or path step if you want them to verify)
+                # Let's go to summary
+                summary_idx = self.steps.index(self._create_summary_page)
+                self.show_step(summary_idx)
+                return
+            else: # Reinstall completely
+                # Proceed to welcome page
+                pass
 
         if self.current_step < len(self.steps) - 1:
             self.show_step(self.current_step + 1)
@@ -238,13 +267,18 @@ class InstallerWizard:
         
         f = tk.Frame(self.content_frame, bg=_BG_PAGE, pady=10)
         f.pack(fill=tk.X)
-        ttk.Radiobutton(f, text="Update existing installation", variable=self.is_update, value=True).pack(anchor="w")
+        ttk.Radiobutton(f, text="Update existing installation", variable=self.existing_choice, value=1).pack(anchor="w")
         tk.Label(f, text="Keeps your paths. Upgrades pip and tlm dependencies.", font=self.tip_font, fg=_FG_MUTED, bg=_BG_PAGE, padx=25).pack(anchor="w")
 
         f2 = tk.Frame(self.content_frame, bg=_BG_PAGE, pady=10)
         f2.pack(fill=tk.X)
-        ttk.Radiobutton(f2, text="Reinstall completely", variable=self.is_update, value=False).pack(anchor="w")
+        ttk.Radiobutton(f2, text="Reinstall completely", variable=self.existing_choice, value=2).pack(anchor="w")
         tk.Label(f2, text="Configure new installation paths or overwrite existing.", font=self.tip_font, fg=_FG_MUTED, bg=_BG_PAGE, padx=25).pack(anchor="w")
+        
+        f3 = tk.Frame(self.content_frame, bg=_BG_PAGE, pady=10)
+        f3.pack(fill=tk.X)
+        ttk.Radiobutton(f3, text="Reinstall as Portable", variable=self.existing_choice, value=3).pack(anchor="w")
+        tk.Label(f3, text="Switch to a single-folder installation (recommended for simplicity).", font=self.tip_font, fg=_FG_MUTED, bg=_BG_PAGE, padx=25).pack(anchor="w")
 
     def _create_welcome_page(self):
         self._create_tip_sidebar(
@@ -417,12 +451,23 @@ class InstallerWizard:
 
         except Exception as e:
             err = str(e)
-            self.root.after(0, lambda: messagebox.showerror("Error", f"Installation failed: {err}"))
-            self.root.after(0, lambda: self.next_btn.configure(state=tk.NORMAL))
+            def _show_err():
+                if self.root.winfo_exists():
+                    messagebox.showerror("Error", f"Installation failed: {err}")
+                    self.next_btn.configure(state=tk.NORMAL)
+            self.root.after(0, _show_err)
 
     def _update_status(self, text, val):
-        self.root.after(0, lambda: self.status_lbl.configure(text=text))
-        self.root.after(0, lambda: self.progress.configure(value=val))
+        def _do_update():
+            try:
+                if self.root.winfo_exists():
+                    if hasattr(self, 'status_lbl') and self.status_lbl.winfo_exists():
+                        self.status_lbl.configure(text=text)
+                    if hasattr(self, 'progress') and self.progress.winfo_exists():
+                        self.progress.configure(value=val)
+            except tk.TclError:
+                pass
+        self.root.after(0, _do_update)
 
     def _create_launcher(self, mode, dest, bin_dir, tlm_exe, venv_dir, is_win):
         activate_bat = venv_dir / "Scripts" / "activate.bat"
@@ -456,12 +501,17 @@ class InstallerWizard:
             _add_to_user_path_windows(bin_dir)
 
     def _finish_install(self, py_exe):
+        if not self.root.winfo_exists():
+            return
+        
         if messagebox.askyesno(
             "Success",
             "Installation complete! Would you like to start the onboarding wizard to configure your LLM provider?",
         ):
             subprocess.Popen([str(py_exe), "-m", "tlm.gui.installer"])
-        self.root.destroy()
+        
+        if self.root.winfo_exists():
+            self.root.destroy()
 
 
 if __name__ == "__main__":

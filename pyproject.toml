@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tlm"
-version = "0.4.0.dev1"
+version = "0.4.2.dev6"
 description = "Linux terminal CLI for LLM Q&A, guarded code write/run, and Tk/FLTK config UI."
 readme = "README.md"
 license = "Apache-2.0"
@@ -25,6 +25,7 @@ usage = ["tiktoken>=0.7"]
 gui-fltk = ["pyfltk>=1.4,<2"]
 dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10", "pip-audit>=2.7"]
 secure = ["keyring>=25.0"]
+web = ["playwright>=1.40", "markdownify>=0.12"]
 
 [project.scripts]
 tlm = "tlm.cli:main"

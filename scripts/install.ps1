@@ -1,14 +1,12 @@
 #Requires -Version 5.1
 # Install tlm on Windows.
-# Default install directory: C:\tlm
-#
-# Usage:
-#   .\scripts\install.ps1                        # from repo clone
-#   .\scripts\install.ps1 -Dest "D:\mytlm"       # custom path
-#   .\scripts\install.ps1 -Version 0.2.0b2       # specific version from GitHub
+# Default install directory: %LOCALAPPDATA%\tlm (fallback to C:\tlm)
+$defaultDest = Join-Path $env:LOCALAPPDATA "tlm"
+if (-not $env:LOCALAPPDATA) { $defaultDest = "C:\tlm" }
+
 param(
     [string]$Version = "0.3.0.dev1",
-    [string]$Dest    = "C:\tlm"
+    [string]$Dest    = $defaultDest
 )
 
 $ErrorActionPreference = "Stop"

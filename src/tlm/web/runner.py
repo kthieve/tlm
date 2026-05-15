@@ -1,4 +1,4 @@
-"""Parallel Lightpanda fetch batches + live terminal progress (Rich + plain fallback)."""
+"""Parallel web fetch execution (Lightpanda, Playwright, or generic)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlparse
 
-# argv → (exit_code, combined stdout+stderr)
+# RunArgvFn: takes an argv list (or dummy list with URL as last element) and returns (exit_code, body)
 RunArgvFn = Callable[[list[str]], tuple[int, str]]
 
 

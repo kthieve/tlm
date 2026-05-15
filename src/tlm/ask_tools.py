@@ -22,12 +22,12 @@ from tlm.session import Session, append_assistant, append_user
 from tlm.settings import UserSettings
 from tlm.web.lightpanda import (
     build_fetch_argv,
-    detect_fetch_capabilities,
     normalize_search_provider,
-    resolve_binary,
     search_url_for_query,
     validate_url,
 )
+from tlm.web.backend import resolve_web_backend, build_run_fn, web_env
+from tlm.web.playwright_backend import is_chromium_installed
 from tlm.web.runner import FetchJob, FetchResult, format_web_feedback, run_web_batch
 
 TLM_EXEC_PATTERN = re.compile(r"```tlm-exec\s*\n(\[[\s\S]*?\])\s*\n```", re.IGNORECASE)
@@ -54,7 +54,7 @@ MEM_BLOCK_HELP = load_prompt("memory", "block_help")
 MEM_PROPOSE_HELP = load_prompt("memory", "propose_help")
 WEB_BLOCK_HELP = load_prompt("web", "block_help")
 WEB_PREREQ_DISABLED = load_prompt("web", "prereq_disabled")
-WEB_PREREQ_NO_LIGHTPANDA = load_prompt("web", "prereq_no_lightpanda")
+WEB_PREREQ_NO_BROWSER = load_prompt("web", "prereq_no_browser")
 
 
 def split_reply_tools(
@@ -378,11 +378,9 @@ def _needs_machine_diagnostics(user_message: str) -> bool:
     )
 
 
-def _lightpanda_env(settings: UserSettings) -> dict[str, str]:
-    env = os.environ.copy()
-    if settings.web_disable_lightpanda_telemetry:
-        env["LIGHTPANDA_DISABLE_TELEMETRY"] = "true"
-    return env
+def _web_env(settings: UserSettings, backend: str) -> dict[str, str]:
+    from tlm.web.backend import web_env
+    return web_env(settings, backend=backend)
 
 
 @dataclass
@@ -440,6 +438,7 @@ def _prompt_web_batch_consent(
     pending: list[dict],
     web_consent: WebConsent,
     *,
+    question: str,
     pcon,
     RichPanel,
     RichConfirm,
@@ -450,7 +449,7 @@ def _prompt_web_batch_consent(
     pre_list = "\n\n".join(
         f"{i}. {s['label']}\n   {s['preview']}" for i, s in enumerate(pending, start=1)
     )
-    title = f"tlm-web: {len(pending)} Lightpanda request(s)"
+    title = f"tlm-web: {len(pending)} web request(s)"
     if use_rich and pcon is not None and RichPanel is not None:
         pcon.print(RichPanel(pre_list, title=title, border_style="cyan"))
         pcon.print(
@@ -474,7 +473,7 @@ def _prompt_web_batch_consent(
             ok = _confirm_single_web(
                 title=f"Proposed web: {s['label']}",
                 preview=str(s["preview"]),
-                question="Run this with Lightpanda?",
+                question=question,
                 pcon=pcon,
                 RichPanel=RichPanel,
                 RichConfirm=RichConfirm,
@@ -504,13 +503,19 @@ def _run_web_ops_interactive(
     dump = settings.web_dump if settings.web_dump in ("markdown", "html") else "markdown"
     allow_http = bool(settings.web_allow_http)
     max_chars = int(settings.web_max_output_chars)
-    lp_env = _lightpanda_env(settings)
+    backend = resolve_web_backend(settings)
+    w_env = _web_env(settings, backend)
     next_hint = _next_hint_for_web(assistant_visible)
-    caps = (
-        detect_fetch_capabilities(str(bin_path))
-        if bin_path
-        else {"user_agent": False, "user_agent_suffix": False}
-    )
+    
+    # Capability detection is backend-specific
+    if backend == "lightpanda":
+        from tlm.web.lightpanda import detect_fetch_capabilities, resolve_binary
+        bin_path = resolve_binary(settings)
+        caps = detect_fetch_capabilities(str(bin_path)) if bin_path else {"user_agent": False, "user_agent_suffix": False}
+    else:
+        # Playwright backend
+        bin_path = "playwright"
+        caps = {"user_agent": True, "user_agent_suffix": False}
     ua = (settings.web_user_agent or "").strip()
     ua_suffix = (settings.web_user_agent_suffix or "").strip()
     if ua and not bool(caps.get("user_agent")):
@@ -536,20 +541,25 @@ def _run_web_ops_interactive(
                 continue
             if not bin_path:
                 parts.append(
-                    "(tlm-web fetch needs Lightpanda; install `lightpanda` or use a simple `tlm-exec` curl GET.)"
+                    "(tlm-web fetch needs a web browser; please install Lightpanda or Playwright Chromium.)"
                 )
                 continue
-            argv = build_fetch_argv(
-                str(bin_path),
-                url,
-                dump=dump,
-                obey_robots=bool(settings.web_obey_robots),
-                user_agent=ua,
-                user_agent_suffix=ua_suffix,
-                supports_user_agent=bool(caps.get("user_agent")),
-                supports_user_agent_suffix=bool(caps.get("user_agent_suffix")),
-            )
-            preview = " ".join(argv)
+            if backend == "lightpanda" and bin_path:
+                argv = build_fetch_argv(
+                    str(bin_path),
+                    url,
+                    dump=dump,
+                    obey_robots=bool(settings.web_obey_robots),
+                    user_agent=ua,
+                    user_agent_suffix=ua_suffix,
+                    supports_user_agent=bool(caps.get("user_agent")),
+                    supports_user_agent_suffix=bool(caps.get("user_agent_suffix")),
+                )
+                preview = " ".join(argv)
+            else:
+                # Playwright or generic
+                argv = ["web", "fetch", url]
+                preview = f"fetch {url}"
             key = _web_op_session_key(op, settings)
             if not key:
                 parts.append("(tlm-web fetch missing url)")
@@ -584,22 +594,25 @@ def _run_web_ops_interactive(
 
             if not bin_path:
                 parts.append(
-                    "(tlm-web search requires the Lightpanda binary; set `lightpanda_path` or install "
-                    "`lightpanda` — https://github.com/lightpanda-io/browser )"
+                    "(tlm-web search requires a web browser; please install Lightpanda or Playwright Chromium.)"
                 )
                 continue
 
-            argv = build_fetch_argv(
-                str(bin_path),
-                target,
-                dump=dump,
-                obey_robots=bool(settings.web_search_obey_robots),
-                user_agent=ua,
-                user_agent_suffix=ua_suffix,
-                supports_user_agent=bool(caps.get("user_agent")),
-                supports_user_agent_suffix=bool(caps.get("user_agent_suffix")),
-            )
-            preview = " ".join(argv)
+            if backend == "lightpanda" and bin_path:
+                argv = build_fetch_argv(
+                    str(bin_path),
+                    target,
+                    dump=dump,
+                    obey_robots=bool(settings.web_search_obey_robots),
+                    user_agent=ua,
+                    user_agent_suffix=ua_suffix,
+                    supports_user_agent=bool(caps.get("user_agent")),
+                    supports_user_agent_suffix=bool(caps.get("user_agent_suffix")),
+                )
+                preview = " ".join(argv)
+            else:
+                argv = ["web", "search", target]
+                preview = f"search {q!r} on {provider}"
             key = _web_op_session_key(op, settings)
             if not key:
                 parts.append("(tlm-web search missing q)")
@@ -626,6 +639,7 @@ def _run_web_ops_interactive(
     _prompt_web_batch_consent(
         pending,
         web_consent,
+        question=f"Run this with {backend}?",
         pcon=pcon,
         RichPanel=RichPanel,
         RichConfirm=RichConfirm,
@@ -635,11 +649,7 @@ def _run_web_ops_interactive(
     if not steps:
         return [p for p in parts if p] or ["(no web fetches to run)"]
 
-    def _lp_run(argv: list[str]) -> tuple[int, str]:
-        try:
-            return _run_argv(argv, timeout=timeout, env=lp_env)
-        except subprocess.TimeoutExpired as e:
-            return -1, f"stderr:\n{str(e)}\n"
+    run_fn = build_run_fn(settings, backend=backend)
 
     jobs: list[FetchJob] = []
     for s in steps:
@@ -660,9 +670,9 @@ def _run_web_ops_interactive(
     if jobs:
         batch = run_web_batch(
             jobs,
-            run_argv=_lp_run,
+            run_argv=run_fn,
             timeout=timeout,
-            env=lp_env,
+            env=w_env,
             concurrency=_clamp_web_conc(settings),
             dump=dump,
             max_output_chars=max_chars,
@@ -786,13 +796,24 @@ def run_interactive_ask(
 
         ready_items = load_ready()
 
-    lp_bin = resolve_binary(settings) if settings.web_enabled else None
-    web_prompt = bool(web and settings.web_enabled and lp_bin)
+    backend = resolve_web_backend(settings) if settings.web_enabled else None
+    web_available = False
+    if backend == "lightpanda":
+        from tlm.web.lightpanda import resolve_binary
+        web_available = bool(resolve_binary(settings))
+    elif backend == "playwright":
+        from tlm.web.playwright_backend import is_chromium_installed
+        web_available = is_chromium_installed()
+
+    web_prompt = bool(web and settings.web_enabled and web_available)
     web_prerequisite = ""
     if web and not settings.web_enabled:
         web_prerequisite = WEB_PREREQ_DISABLED
-    elif web and settings.web_enabled and not lp_bin:
-        web_prerequisite = WEB_PREREQ_NO_LIGHTPANDA
+    elif web and settings.web_enabled and not web_available:
+        if backend == "playwright":
+            web_prerequisite = "**`web_enabled` is true**, but **Chromium** is not installed for Playwright. Run `tlm web install` or use the GUI."
+        else:
+            web_prerequisite = WEB_PREREQ_NO_BROWSER
 
     web_note = ""
     if web_prompt:

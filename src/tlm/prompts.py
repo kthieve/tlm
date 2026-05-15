@@ -145,25 +145,24 @@ DEFAULT_PROMPTS: dict[str, dict[str, str]] = {
         ),
         "prereq_disabled": (
             "**Web tools requested**, but `web_enabled` is **false** in config.toml. Tell the user to set "
-            "`web_enabled = true`, install the **lightpanda** binary (or set `lightpanda_path`), then retry. "
+            "`web_enabled = true` and ensure a browser is configured, then retry. "
             "Do **not** say you have no “live web” in general — explain this configuration step.\n"
         ),
-        "prereq_no_lightpanda": (
-            "`web_enabled` is **true**, but the **lightpanda** binary was **not** found (install it or set "
-            "`lightpanda_path` in config). ```tlm-web``` will not run until then: "
-            "https://github.com/lightpanda-io/browser — Do **not** claim a generic lack of web access; explain "
-            "that Lightpanda must be installed for `tlm-web`.\n"
+        "prereq_no_browser": (
+            "`web_enabled` is **true**, but no **web browser** was found. Install a supported browser or set "
+            "the path in config. ```tlm-web``` will not run until then. "
+            "Do **not** claim a generic lack of web access; explain that a browser must be configured.\n"
         ),
         "web_focus_note": (
             "Note: Invoked as **`tlm web`** — answer with ```tlm-web``` (`search` then `fetch` on result URLs) "
-            "when Lightpanda is available; do not refuse live web without checking tool availability."
+            "when the browser is available; do not refuse live web without checking tool availability."
         ),
         "time_sensitive_note": (
-            "Note: Time-sensitive — use `tlm-web` (`search` then `fetch`) via **Lightpanda** for web pages; "
+            "Note: Time-sensitive — use `tlm-web` (`search` then `fetch`) via **the browser** for web pages; "
             "avoid curl for search results; `tlm-exec` curl only for a trivial single-URL GET if enough."
         ),
         "session_note": (
-            "Session: **`tlm-web` is Lightpanda-only** — use it for `search` and `fetch`; do not use HTTP search "
+            "Session: **`tlm-web` is browser-only** — use it for `search` and `fetch`; do not use HTTP search "
             "APIs or curl for search-result pages here."
         ),
     },

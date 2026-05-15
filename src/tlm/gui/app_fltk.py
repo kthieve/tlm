@@ -9,7 +9,8 @@ from pathlib import Path
 
 from tlm import __version__
 from tlm.self_update import format_version_update_status
-from tlm.memory import STORAGE_RULES_TEXT, iter_longterm, load_ready, save_ready
+from tlm.memory import iter_longterm, load_ready, save_ready
+from tlm.memory_rules import format_rules_for_prompt
 from tlm.providers.registry import REAL_PROVIDER_IDS, get_provider
 from tlm.session import list_sessions, load_session, write_last_session_id
 from tlm.settings import load_settings, save_settings
@@ -18,11 +19,12 @@ from tlm.web.lightpanda_release import (
     compare_status,
     describe_local_install,
     fetch_latest_release,
-    install_latest_to_data_dir,
     preferred_asset_basename,
     try_add_tlm_data_bin_to_path_rc,
 )
+from tlm.web.browser_install import install_web_browser
 from tlm.telemetry import requests_log_path, summarize_usage
+from tlm.safety.elevation import is_elevated, elevate_me
 
 
 def _maybe_keyring_get(provider_id: str) -> str | None:
@@ -163,7 +165,7 @@ def run_gui_fltk() -> None:
             gm.begin()
             Fl_Box(20, 55, 660, 20, "Rules (see README); ready memory = short injected facts")
             self.mem_rules = Fl_Multiline_Input(20, 78, 660, 72)
-            self.mem_rules.value(STORAGE_RULES_TEXT)
+            self.mem_rules.value(format_rules_for_prompt())
             Fl_Box(20, 155, 200, 20, "Ready (one line per fact)")
             self.mem_ready = Fl_Multiline_Input(20, 178, 660, 90)
             Fl_Box(20, 275, 200, 20, "Long-term (read-only list)")
@@ -218,8 +220,12 @@ def run_gui_fltk() -> None:
                 "Version, install kind, and latest GitHub tag (Refresh queries the network).",
             )
             self.about_txt = Fl_Multiline_Input(20, 78, 660, 320)
-            ba = Fl_Button(20, 408, 300, 28, "Refresh (query GitHub)")
+            ba = Fl_Button(20, 408, 200, 28, "Refresh (query GitHub)")
             ba.callback(self._refresh_about_fltk)
+            
+            if not is_elevated():
+                be = Fl_Button(230, 408, 150, 28, "Run as Admin")
+                be.callback(self._elevate_fltk)
             gabout.end()
 
             tabs.end()
@@ -300,16 +306,31 @@ def run_gui_fltk() -> None:
             self.lp_status.value("\n".join(lines))
 
         def _download_lp_fltk(self, *_a: object) -> None:
-            if (
-                fl_choice(
-                    "Download latest Lightpanda for this OS into ~/.local/share/tlm/bin ?",
-                    "OK",
-                    "Cancel",
-                    None,
+            import sys
+            
+            available = ["playwright"]
+            if sys.platform != "win32":
+                available.append("lightpanda")
+            
+            backend = "playwright"
+            if len(available) > 1:
+                # Offer choice
+                from fltk import fl_choice
+                res = fl_choice(
+                    "Select Web Browser Engine to install:",
+                    "Lightpanda (Linux/Mac)",
+                    "Playwright (All platforms)",
+                    None
                 )
-                != 0
-            ):
-                return
+                if res == -1: # Closed dialog
+                    return
+                backend = "lightpanda" if res == 0 else "playwright"
+            else:
+                # Only Playwright on Windows
+                from fltk import fl_choice
+                if fl_choice("Install Playwright (Chromium) browser engine?", "OK", "Cancel", None) != 0:
+                    return
+                backend = "playwright"
 
             cancel_ev = threading.Event()
             state: dict[str, object] = {
@@ -335,11 +356,13 @@ def run_gui_fltk() -> None:
                     s = load_settings()
                     s.web_enabled = bool(int(self.web_en.value()))
                     s.lightpanda_path = self.lp_path_in.value().strip() or None
-                    state["result"] = install_latest_to_data_dir(
+                    state["result"] = install_web_browser(
                         s,
+                        backend=backend,
                         timeout=600.0,
                         cancel_event=cancel_ev,
                         progress=prog_cb,
+                        text_progress=lambda t: None # FLTK progress handled by poll_cb
                     )
                 except BaseException as e:  # noqa: BLE001
                     state["err"] = e
@@ -523,9 +546,20 @@ def run_gui_fltk() -> None:
             fl_alert("tlm: Saved safety profile.")
 
         def _about_fill(self, online: bool) -> None:
-            self.about_txt.value(format_version_update_status(load_settings(), query_github=online))
+            elev = "Elevated" if is_elevated() else "Standard"
+            txt = format_version_update_status(load_settings(), query_github=online)
+            self.about_txt.value(f"{txt}\nPrivileges: {elev}")
 
         def _refresh_about_fltk(self, *_a: object) -> None:
             self._about_fill(True)
+
+        def _elevate_fltk(self, *_a: object) -> None:
+            from fltk import fl_choice
+            if fl_choice("Restart tlm with administrative/root privileges?", "Yes", "No", None) == 0:
+                try:
+                    elevate_me()
+                except Exception as e:
+                    from fltk import fl_alert
+                    fl_alert(f"Elevation failed: {e}")
 
     FltkConfig()

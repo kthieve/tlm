@@ -55,6 +55,9 @@ def prompt_choice(prompt_text, options):
 def get_default_install_dest():
     """Default destination for mode 1/2 on Windows."""
     if platform.system() == "Windows":
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            return Path(local_appdata) / "tlm"
         return Path("C:/tlm")
     return Path.cwd() / "tlm-install"
 
@@ -62,8 +65,13 @@ def get_default_install_dest():
 def get_default_standard_paths():
     home = Path.home()
     if platform.system() == "Windows":
-        bin_dir = Path("C:/tlm")
-        venv_dir = Path("C:/tlm/venv")
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            bin_dir = Path(local_appdata) / "tlm"
+            venv_dir = Path(local_appdata) / "tlm" / "venv"
+        else:
+            bin_dir = Path("C:/tlm")
+            venv_dir = Path("C:/tlm/venv")
     else:
         bin_dir = home / ".local" / "bin"
         venv_dir = home / ".local" / "share" / "tlm-venv"
@@ -117,17 +125,25 @@ def _add_to_user_path_windows(dir_path: Path) -> bool:
 import shutil
 
 def find_existing_install():
+    # 1. Check which tlm
     exe = shutil.which("tlm")
     if exe:
         return Path(exe).parent.resolve()
     
+    # 2. Check standard split locations
     bin_dir, _ = get_default_standard_paths()
     if (bin_dir / ("tlm.bat" if platform.system() == "Windows" else "tlm")).exists():
         return bin_dir.resolve()
         
+    # 3. Check portable/standalone locations
     default_dest = get_default_install_dest()
     if (default_dest / ("tlm.bat" if platform.system() == "Windows" else "tlm")).exists():
         return default_dest.resolve()
+    
+    # 4. Fallback for Windows C:/tlm
+    if platform.system() == "Windows":
+        if (Path("C:/tlm") / "tlm.bat").exists():
+            return Path("C:/tlm").resolve()
         
     return None
 
@@ -182,21 +198,37 @@ def main():
             [
                 "Update existing installation (keep paths, upgrade pip and tlm)",
                 "Reinstall (choose new options or overwrite)",
+                "Reinstall as Portable (Move everything to a single folder)",
                 "Cancel"
             ]
         )
-        if choice == 3:
+        if choice == 4:
             sys.exit(0)
         elif choice == 1:
             # Try to infer mode and paths
+            launcher = existing_bin / ("tlm.bat" if is_windows else "tlm")
+            has_data = (existing_bin / "data").exists()
+            is_p = False
+            if launcher.exists():
+                try:
+                    content = launcher.read_text(encoding="utf-8", errors="replace")
+                    if "XDG_CONFIG_HOME" in content:
+                        is_p = True
+                except Exception:
+                    pass
+            
             if (existing_bin / "venv").exists():
-                mode = 1 # or 2, doesn't matter for update
+                mode = 1 if (is_p or has_data) else 2
                 args.dest = str(existing_bin)
             else:
                 mode = 3
                 def_bin, def_venv = get_default_standard_paths()
                 args.bin_dir = str(existing_bin)
                 args.venv_dir = str(def_venv) # Assuming default venv location
+        elif choice == 3:
+            mode = 1
+            args.dest = str(get_default_install_dest())
+            print(f"  Switching to Portable mode. Default destination: {args.dest}")
 
     if not mode:
         print("\ntlm Installation Options\n========================")

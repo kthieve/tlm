@@ -9,6 +9,7 @@ import ctypes
 from pathlib import Path
 from typing import Any
 
+from tlm.safety.elevation import is_elevated
 from tlm.safety.profiles import SafetyProfile, normalize_profile
 
 SYSTEM_WRITE_PREFIXES = (
@@ -30,15 +31,7 @@ _ELEVATION = frozenset({"sudo", "doas", "su", "pkexec", "runuser"})
 
 
 def is_euid_root() -> bool:
-    if sys.platform == "win32":
-        try:
-            return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
-            return False
-    try:
-        return os.geteuid() == 0
-    except AttributeError:
-        return False
+    return is_elevated()
 
 
 def trusted_blocked_when_root() -> bool:

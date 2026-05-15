@@ -1293,6 +1293,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_abs.set_defaults(_handler=lambda _: cmd_abilities())
 
+    sub.add_parser("elevate", help="Restart tlm with administrative/root privileges.").set_defaults(
+        _handler=lambda _: cmd_elevate()
+    )
+
     return p
 
 
@@ -1646,6 +1650,22 @@ def cmd_versionlog_ns(ns: argparse.Namespace) -> int:
         console.print(Markdown(text))
     else:
         print(text)
+    return 0
+
+
+def cmd_elevate() -> int:
+    from tlm.safety.elevation import is_elevated, elevate_me
+
+    if is_elevated():
+        print("Already running with elevated privileges.")
+        return 0
+
+    print("Attempting to elevate privileges...")
+    try:
+        elevate_me()
+    except Exception as e:
+        print(f"error: elevation failed: {e}", file=sys.stderr)
+        return 1
     return 0
 
 

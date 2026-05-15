@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2.dev6] - 2026-05-15
+
+### Fixed
+
+- **Installer**: Fixed `_tkinter.TclError` crashes in `install_gui.py` by adding thread-safe checks for widget existence before updating the UI from background threads. This prevents crashes if the window is closed during installation.
+
+## [0.4.2.dev5] - 2026-05-15
+
+### Fixed
+
+- **Installer**: Fixed a bug where updating an existing non-portable installation would incorrectly switch it to portable mode. The installer now correctly detects the existing installation mode by checking the launcher script and data directory.
+
+## [0.4.2.dev4] - 2026-05-15
+
+### Added
+
+- **Installer**: Added a direct "Reinstall as Portable" option to both the terminal (`install.py`) and graphical (`install_gui.py`) installers. This allows users to easily convert an existing installation into a single-folder portable setup.
+
+## [0.4.2.dev3] - 2026-05-15
+
+### Added
+
+- **GUI: Browser Installer**: Added a selection dialog to "Install Browser" in the Web Browser tab.
+- **Cross-Platform Support**: The installer now offers Lightpanda (Linux/Mac) or Playwright (All platforms) based on the user's OS.
+
+## [0.4.2.dev2] - 2026-05-15
+
+### Added
+
+- **Elevation Support**: New `tlm.safety.elevation` module for cross-platform privilege detection and elevation (UAC on Windows, sudo/pkexec on Linux/macOS).
+- **GUI**: Added elevation status and "Run as Admin" button to the About tab in both Tk and FLTK interfaces.
+- **CLI**: New `tlm elevate` command to restart the CLI with administrative privileges.
+
+## [0.4.2.dev1] - 2026-05-15
+
+### Fixed
+
+- **Web Browser Backend**: Fixed `SyntaxError` in `playwright_backend.py` (missing `except` block in `install_chromium`) which caused the CLI and GUI to crash on import.
+
+## [0.4.1] - 2026-05-15
+
+### Added
+
+- **Web Browser Backend**: Introduced Playwright as a cross-platform alternative to Lightpanda.
+- **Windows Support**: `tlm-web` now works on Windows via Playwright + Chromium auto-installation.
+- **Backend Selection**: Added `web_backend` setting ("auto", "lightpanda", "playwright") to `config.toml`.
+- **Unified Installer**: New browser installation flow in GUI, TUI, and setup wizard.
+- **Optional Dependencies**: Added `[web]` extra group for `playwright` and `markdownify`.
+
+### Changed
+
+- **UI/UX**: Renamed "Web / Lightpanda" tab to "Web Browser" and updated all web-related messaging to be backend-agnostic.
+- **Architecture**: Decoupled `tlm-web` tools from the Lightpanda binary via a new backend abstraction layer.
+
+## [0.4.0.dev4] - 2026-05-15
+
+### Changed
+
+- **Path Detection**: Improved `find_tlm_bin_dir` to be more robust, checking `sys.prefix/Scripts` on Windows and other common installation paths.
+- **GUI**: Added "Detected Bin Path" status label to the About tab.
+
+## [0.4.0.dev3] - 2026-05-15
+
+### Changed
+
+- **Versioning Rules**: Formalized the requirement in `AGENTS.md` to bump the subversion and update the changelog at every substantive task completion.
+
+## [0.4.0.dev2] - 2026-05-15
+
+### Added
+
+- **GUI: Add to PATH**: New "Add to PATH" button in the About tab with automatic detection of the correct binary directory and platform-specific logic (Windows Registry vs. Linux shell profile).
+
+## [0.4.0.dev1] - 2026-05-14
+
+### Added
+
+- **Ability System (Plugins)**: Initial implementation of the "Abilities" plugin architecture.
+- **CLI abilities command**: `tlm abilities` to list discovered plugins.
+- **TUI/GUI Abilities Tab**: Integrated plugin discovery and management into the configuration interfaces.
+
 ## [0.3.0.dev2] - 2026-05-13
 
 ### Changed

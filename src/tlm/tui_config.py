@@ -18,12 +18,14 @@ from tlm.settings import (
     merged_api_key,
     save_settings,
 )
+from tlm.web.browser_install import (
+    describe_web_browser_status,
+    install_web_browser,
+)
 from tlm.web.lightpanda_release import (
     RELEASES_PAGE,
     compare_status,
-    describe_local_install,
     fetch_latest_release,
-    install_latest_to_data_dir,
     preferred_asset_basename,
     try_add_tlm_data_bin_to_path_rc,
 )
@@ -35,12 +37,13 @@ def _mask(s: str, keep: int = 4) -> str:
     return s[:keep] + "…"
 
 
-def _web_lightpanda_menu(s: UserSettings) -> bool:
-    """Lightpanda / web submenu. Returns True if settings were changed."""
+def _web_browser_menu(s: UserSettings) -> bool:
+    """Web browser submenu. Returns True if settings were changed."""
     dirty = False
     while True:
-        print("\n--- Web / Lightpanda ---", flush=True)
+        print("\n--- Web Browser ---", flush=True)
         print(f"  web_enabled: {s.web_enabled}", flush=True)
+        print(f"  web_backend: {s.web_backend}", flush=True)
         print(f"  lightpanda_path: {s.lightpanda_path or '(use PATH)'}", flush=True)
         print(f"  web_user_agent: {s.web_user_agent or '(unset)'}", flush=True)
         print(f"  web_user_agent_suffix: {s.web_user_agent_suffix or '(unset)'}", flush=True)
@@ -48,11 +51,11 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
             f"  web_check_lightpanda_updates (GUI auto-check): {s.web_check_lightpanda_updates}",
             flush=True,
         )
-        print(f"  Local: {describe_local_install(s).replace(chr(10), ' / ')}", flush=True)
-        print("  1) Edit flags / path", flush=True)
-        print("  2) Check GitHub latest release (read-only)", flush=True)
-        print("  3) Download latest binary to ~/.local/share/tlm/bin/lightpanda", flush=True)
-        print(f"  4) Show releases URL ({RELEASES_PAGE})", flush=True)
+        print(f"  Status:\n{describe_web_browser_status(s)}", flush=True)
+        print("  1) Edit flags / path / backend", flush=True)
+        print("  2) Check Lightpanda latest release (read-only)", flush=True)
+        print("  3) Install Browser (active backend)", flush=True)
+        print(f"  4) Show Lightpanda releases URL ({RELEASES_PAGE})", flush=True)
         print("  5) Add tlm data bin to PATH (~/.bashrc or ~/.zshrc from $SHELL)", flush=True)
         print("  0) Back to main menu", flush=True)
         try:
@@ -68,6 +71,10 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
                 dirty = True
             elif v in ("n", "no"):
                 s.web_enabled = False
+                dirty = True
+            vb = input(f"web_backend [auto|lightpanda|playwright] ({s.web_backend}): ").strip().lower()
+            if vb in ("auto", "lightpanda", "playwright"):
+                s.web_backend = vb
                 dirty = True
             lp = input(
                 f"lightpanda_path (empty = PATH only; current [{s.lightpanda_path or ''}]): "
@@ -126,16 +133,23 @@ def _web_lightpanda_menu(s: UserSettings) -> bool:
             else:
                 print(f"error: {data}", flush=True)
         elif sub == "3":
-            c = (
-                input(
-                    "Download ~120MB+ from GitHub into ~/.local/share/tlm/bin/lightpanda and set path? [y/N]: "
-                )
-                .strip()
-                .lower()
-            )
+            from tlm.web.backend import resolve_web_backend
+            backend = resolve_web_backend(s)
+            if backend == "playwright":
+                msg = "Install Chromium via Playwright (will use `playwright install chromium`)?"
+            else:
+                msg = f"Download latest Lightpanda binary into {Path(s.tlm_data_dir or '~/.local/share/tlm') / 'bin/lightpanda'}?"
+            
+            c = input(f"{msg} [y/N]: ").strip().lower()
             if c not in ("y", "yes"):
                 continue
-            ok, msg, dest = install_latest_to_data_dir(s, timeout=120.0)
+            
+            ok, msg, dest = install_web_browser(
+                s,
+                backend=backend,
+                timeout=120.0,
+                text_progress=print
+            )
             print(msg if ok else f"error: {msg}", flush=True)
             if ok and dest:
                 dirty = True
@@ -202,7 +216,7 @@ def run_config_tui() -> int:
         print(f"  6) API key ({pid})    [{_mask(key)}]", flush=True)
         print("  7) model override for current provider (per-provider)", flush=True)
         print(f"  m) memory enabled      [{s.memory_enabled}]", flush=True)
-        print("  w) Web / Lightpanda (`tlm-web`, updates, install)", flush=True)
+        print("  w) Web Browser (`tlm-web`, backend, install)", flush=True)
         print(f"     ready budget chars  [{s.memory_ready_budget_chars}]", flush=True)
         print(
             f"     auto-harvest every  [{s.memory_auto_harvest_threshold_messages}] msgs",
@@ -305,7 +319,7 @@ def run_config_tui() -> int:
                     s.models[prov] = m
                     dirty = True
         elif choice == "w":
-            dirty = dirty or _web_lightpanda_menu(s)
+            dirty = dirty or _web_browser_menu(s)
         elif choice == "m":
             v = input(f"memory enabled [Y/n] ({s.memory_enabled}): ").strip().lower()
             if v in ("n", "no"):

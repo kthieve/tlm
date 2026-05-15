@@ -22,7 +22,7 @@
 | Mode | What you get |
 |:-----|:-------------|
 | **Ask** | Chat with the model; answers render as **Rich markdown**. Same as typing a natural question after `tlm` with no subcommand. |
-| **Tools (optional)** | The model may emit fenced blocks: **`tlm-exec`** (argv JSON — local diagnostics), **`tlm-mem`** (search your saved memory), **`tlm-web`** (fetch a URL or a simple DuckDuckGo search via [Lightpanda](https://github.com/lightpanda-io/browser)). Nothing runs until you confirm. |
+| **Tools (optional)** | The model may emit fenced blocks: **`tlm-exec`** (argv JSON — local diagnostics), **`tlm-mem`** (search your saved memory), **`tlm-web`** (fetch a URL or a simple DuckDuckGo search via a headless browser: **Playwright** or [Lightpanda](https://github.com/lightpanda-io/browser)). Nothing runs until you confirm. |
 | **Write** | Proposed file changes with preview and confirmation. |
 | **Do** | Planned **`argv` lists** (no shell injection by default), preview, then `subprocess` with timeouts and safety checks. |
 | **GUI** | `tlm gui` / `tlm config gui` — keys, sessions, usage, logs, permissions. Set `TLM_GUI` to `tk`, `fltk`, or `auto`. |
@@ -93,7 +93,7 @@ Release artifacts (wheel, sdist, zipapp) may still appear on GitHub Releases whe
 - **Natural language:** `tlm <your question>` — same as `tlm ask`.
 - **Explicit:** `tlm ask "…"` or `tlm ? "…"` (flags: `--session`, `--provider`, `--new`, `--keyword`, `--budget`, `--clear-context`, `--no-tools`, `--no-web`).
 - **`tlm-exec`** — model suggests a single argv array per block; you approve each command. Disable with **`--no-tools`**.
-- **`tlm-web`** — needs `web_enabled = true` in config and the **Lightpanda** binary on `PATH` (or `lightpanda_path`). Disable with **`--no-web`**. No native Windows binary for Lightpanda — use **WSL** if needed.
+- **`tlm-web`** — needs `web_enabled = true` in config and a supported browser engine. **Playwright** (Windows/Linux/macOS) auto-installs Chromium; **Lightpanda** (Linux/macOS) requires a binary. Disable with **`--no-web`**.
 - **`tlm-mem`** — read-only search over stored memory (when memory is enabled).
 
 See [sessions-and-memory.md](docs/sessions-and-memory.md) for ready vs long-term memory and harvest.
@@ -107,7 +107,7 @@ See [sessions-and-memory.md](docs/sessions-and-memory.md) for ready vs long-term
 
 | Path | Role |
 |:-----|:-----|
-| `$XDG_CONFIG_HOME/tlm/config.toml` | Provider, model, timeouts, memory, **web / Lightpanda** settings |
+| `$XDG_CONFIG_HOME/tlm/config.toml` | Provider, model, timeouts, memory, **Web Browser** settings |
 | `$XDG_CONFIG_HOME/tlm/permissions.toml` | Freelist, sandbox, network mode, escape grants |
 | `$XDG_DATA_HOME/tlm/` | Sessions, memory |
 | `$XDG_STATE_HOME/tlm/` | Logs (e.g. `requests.jsonl`) |

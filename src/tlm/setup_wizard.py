@@ -160,8 +160,9 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
 
         webdef = "y" if s.web_enabled else "n"
         print(
-            "\nWeb in ask mode: model can use fenced `tlm-web` blocks (search/fetch) via the "
-            "**Lightpanda** browser CLI — install from https://github.com/lightpanda-io/browser",
+            "\nWeb in ask mode: model can use fenced `tlm-web` blocks (search/fetch) via a "
+            "headless browser. Supported engines: Playwright (Windows/Linux/macOS) or "
+            "Lightpanda (Linux/macOS).",
             flush=True,
         )
         v7 = input(f"Enable web tools (`web_enabled`)? [y/N] (current: {webdef}): ").strip().lower()
@@ -169,14 +170,19 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
             s.web_enabled = True
         elif v7 in ("n", "no"):
             s.web_enabled = False
-        # Enter alone: leave s.web_enabled unchanged
+        
         if s.web_enabled:
-            cur_lp = (s.lightpanda_path or "").strip()
-            v_lp = input(
-                f"Path to `lightpanda` binary (Enter = search PATH; current [{cur_lp or 'PATH'}]): "
-            ).strip()
-            if v_lp:
-                s.lightpanda_path = v_lp
+            wb = input(f"Web backend [auto|lightpanda|playwright] ({s.web_backend}): ").strip().lower()
+            if wb in ("auto", "lightpanda", "playwright"):
+                s.web_backend = wb
+            if s.web_backend in ("auto", "lightpanda"):
+                cur_lp = (s.lightpanda_path or "").strip()
+                v_lp = input(
+                    f"Path to `lightpanda` binary (Enter = search PATH; current [{cur_lp or 'PATH'}]): "
+                ).strip()
+                if v_lp:
+                    s.lightpanda_path = v_lp
+            
             vac = (
                 input(
                     "In the config GUI, auto-check Lightpanda on GitHub when opening the Web tab? [y/N]: "
@@ -195,6 +201,7 @@ def run_setup_wizard(settings: UserSettings) -> tuple[UserSettings | None, int]:
         print(f"  safety_profile:  {s.safety_profile}", flush=True)
         print(f"  memory_enabled:  {s.memory_enabled}", flush=True)
         print(f"  web_enabled:     {s.web_enabled}", flush=True)
+        print(f"  web_backend:     {s.web_backend}", flush=True)
         if s.lightpanda_path:
             print(f"  lightpanda_path: {s.lightpanda_path}", flush=True)
         if s.web_enabled:
